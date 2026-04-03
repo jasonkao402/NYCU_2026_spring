@@ -9,13 +9,14 @@ from scipy.spatial import KDTree
 import os
 
 
-def knn_matting(image, trimap, knn_k, my_lambda=100):
+def knn_matting(image, trimap, task_id, knn_k, my_lambda=100):
     [h, w, c] = image.shape
-    # hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     image, trimap = image / 255.0, trimap / 255.0
-    foreground = (trimap == 1.0).astype(int)
-    background = (trimap == 0.0).astype(int)
-
+    # print(f"Unique values in trimap: {np.unique(trimap)}")
+    foreground = (trimap > 0.9).astype(int)
+    background = (trimap < 0.1).astype(int)
+    # mask = foreground + background
+    # cv2.imwrite(f'./result/{task_id}_mask.png', (mask * 255).astype(np.uint8))
     ####################################################
     # TODO: find KNN for the given image
     ####################################################
@@ -23,19 +24,18 @@ def knn_matting(image, trimap, knn_k, my_lambda=100):
     x, y = np.meshgrid(np.arange(w), np.arange(h))
     spatial_scale = np.linalg.norm([h, w])
     
-    features = np.zeros((N, 5))
+    # RGB, x, y
+    # features = np.zeros((N, c+2))
     
-    features[:, :3] = image.reshape(-1, 3)
-    features[:, 3] = x.reshape(-1) / spatial_scale
-    features[:, 4] = y.reshape(-1) / spatial_scale
-    # features = np.zeros((N, 6))
-    # # cos(h), sin(h), s, v, x, y
-    # features[:, 0] = np.cos(hsv_image[:, :, 0].reshape(-1) * np.pi / 180)  # cos(hue)
-    # features[:, 1] = np.sin(hsv_image[:, :, 0].reshape(-1) * np.pi / 180)  # sin(hue)
-    # features[:, 2:4] = hsv_image[:, :, 1:3].reshape(-1, 2)  # saturation and value
-    # # Add spatial coordinates
-    # features[:, 4] = x.reshape(-1) / spatial_scale
-    # features[:, 5] = y.reshape(-1) / spatial_scale
+    # features[:, :c] = image.reshape(-1, c)
+    # features[:, c] = x.reshape(-1) / spatial_scale
+    # features[:, c+1] = y.reshape(-1) / spatial_scale
+    
+    # LAB, x, y
+    features = np.zeros((N, 5))
+    features[:, :c] = image.reshape(-1, c)
+    features[:, c] = x.reshape(-1) / spatial_scale
+    features[:, c+1] = y.reshape(-1) / spatial_scale
     
     tree = KDTree(features)
     distances, indices = tree.query(features, k=knn_k+1)
@@ -60,15 +60,16 @@ def knn_matting(image, trimap, knn_k, my_lambda=100):
     A = sp.csr_matrix((data, (row_indices, col_indices)), shape=(N, N))
     A = A.maximum(A.T)  # make it symmetric
     D = sp.diags(A.sum(axis=1).A1)
-    L = D - A
-    # eps = 1e-6
-    # L = D - A + eps * sp.eye(N)  # add small value to diagonal for stability
+    # L = D - A
+    eps = 1e-6
+    L = D - A + eps * sp.eye(N)  # add small value to diagonal for stability
+    foreground_flat = (trimap.reshape(-1) > 0.9)
+    background_flat = (trimap.reshape(-1) < 0.1)
     
-    constraint_mask = np.zeros(N)
-    constraint_mask[foreground] = 1.0
-    constraint_mask[background] = 1.0
-    constraint_values = np.zeros(N)
-    constraint_values[foreground] = 1.0   # alpha=1 for FG
+    constraint_mask = foreground_flat | background_flat
+    # Ensure constraint_mask is numeric
+    constraint_mask = constraint_mask.astype(float)
+    constraint_values = foreground_flat.astype(float)
     # background already 0
     
     # Build diagonal matrix for constraints
@@ -84,19 +85,12 @@ def knn_matting(image, trimap, knn_k, my_lambda=100):
     #       if no exact solution exists
     ####################################################
     warnings.filterwarnings('error')
-    # alpha = []
     
-    # Preconditioner: Jacobi (diagonal)
-    # M_diag = M.diagonal()
-    # def precond(x):
-    #     return x / M_diag
-    # M = spla.spilu(M.tocsc(), drop_tol=1e-4)
     try:
-        # alpha = spla.spsolve(M, b)
-        alpha, info = spla.cg(M, b, rtol=1e-5, maxiter=1000)
+        alpha = spla.spsolve(M, b)
     except Warning as e:
         print("Error solving linear system:", e)
-        alpha, info = spla.cg(M, b, rtol=1e-5, maxiter=1000)
+        alpha, info = spla.cg(M, b, rtol=1e-5, maxiter=100)
         if info != 0:
             print("Conjugate Gradient did not converge:", info)
             # try least squares solution
@@ -109,24 +103,35 @@ if __name__ == '__main__':
     abs_path = os.path.dirname(os.path.abspath(__file__))
     os.chdir(abs_path)
     os.makedirs('./result', exist_ok=True)
+    new_background = cv2.imread(f'./background/garden.png')
     tasks = ["bear", "white_cloth", "woman"]
-    task_id = 0
-    print(f"Processing task: {tasks[task_id]}...")
-    image = cv2.imread(f'./image/{tasks[task_id]}.png')
-    trimap = cv2.imread(f'./trimap/{tasks[task_id]}.png', cv2.IMREAD_GRAYSCALE)
-    print(f"Image shape: {image.shape}, Trimap shape: {trimap.shape}")
-    # scale = 0.75
-    # image = cv2.resize(image, (0, 0), fx=scale, fy=scale)
-    # trimap = cv2.resize(trimap, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
-    ####################################################
-    # TODO: pick up your own background image, 
-    #       and merge it with the foreground
-    ####################################################
-    K = [3, 4, 5, 6, 7, 8, 9, 10]
-    for k in K:
-        # print(f"Processing K={k}...")
-        alpha = knn_matting(image, trimap, knn_k=k, my_lambda=100)
-        alpha = alpha[:, :, np.newaxis]
-        alpha = (alpha * 255).astype(np.uint8)
-        print(f"Saving result for K={k}...")
-        cv2.imwrite(f'./result/{tasks[task_id]}_{k}.png', alpha)
+    for task_id in range(len(tasks)):
+        print(f"Processing task: {tasks[task_id]}...")
+        image = cv2.imread(f'./image/{tasks[task_id]}.png')
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        trimap = cv2.imread(f'./trimap/{tasks[task_id]}.png', cv2.IMREAD_GRAYSCALE)
+        # thresholds = [0, 32, 233, 255]
+        trimap[trimap < 32] = 0
+        trimap[(trimap >= 32) & (trimap < 233)] = 127
+        trimap[trimap >= 233] = 255
+        foreground = (trimap >= 233)
+        background = (trimap < 32)
+        # print(np.unique(trimap))
+        print(f"Image shape: {image.shape}, Trimap shape: {trimap.shape}")
+        # scale = 0.75
+        # image = cv2.resize(image, (0, 0), fx=scale, fy=scale)
+        # trimap = cv2.resize(trimap, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+        ####################################################
+        # TODO: pick up your own background image, 
+        #       and merge it with the foreground
+        ####################################################
+        # K = [3, 4, 5, 6, 7, 8, 9, 10]
+        K = [3, 5, 7, 10]
+        for k in K:
+            task_id_str = f"{tasks[task_id]}_k_{k}"
+            alpha = knn_matting(image, trimap, task_id=task_id_str, knn_k=k, my_lambda=1000)
+            alpha = alpha[:, :, np.newaxis]
+            alpha = (alpha * 255).astype(np.uint8)
+            print(f"Saving matting result for K={k}...")
+            cv2.imwrite(f'./result/{task_id_str}.png', alpha)
+            print(f"Finished saving result for K={k}")
