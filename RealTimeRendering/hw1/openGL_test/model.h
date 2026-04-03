@@ -85,6 +85,35 @@ class TeapotModel
 public:
 	TeapotModel(const std::string& objPath) {
 		// TODO: load obj file and create buffers
+		std::vector<float> vertices;
+		std::vector<unsigned int> indices;
+		std::ifstream objFile(objPath);
+		if (!objFile.is_open()) {
+			std::cerr << "Failed to open file: " << objPath << std::endl;
+			return;
+		}
+		std::string line;
+		while (std::getline(objFile, line)) {
+			std::istringstream iss(line);
+			std::string prefix;
+			iss >> prefix;
+			if (prefix == "v") {
+				float x, y, z;
+				iss >> x >> y >> z;
+				vertices.emplace_back(x);
+				vertices.emplace_back(y);
+				vertices.emplace_back(z);
+			}
+			else if (prefix == "f") {
+				unsigned int v1, v2, v3;
+				char slash; // to ignore the '/' character
+				iss >> v1 >> slash >> slash >> v2 >> slash >> slash >> v3;
+				indices.emplace_back(v1 - 1); // OBJ indices are 1-based
+				indices.emplace_back(v2 - 1);
+				indices.emplace_back(v3 - 1);
+			}
+		}
+		objFile.close();
 	}
 	~TeapotModel() {}
 
