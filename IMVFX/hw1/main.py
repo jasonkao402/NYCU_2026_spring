@@ -1,5 +1,5 @@
 import numpy as np
-import sklearn.neighbors
+import sklearn.neighbors as skn
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import warnings
@@ -7,7 +7,57 @@ import matplotlib.pyplot as plt
 import cv2
 from scipy.spatial import KDTree
 import os
+import time
+from functools import wraps
 
+def timer(name=None, repeat=1):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            times = []
+            result = None
+            
+            for _ in range(repeat):
+                start = time.perf_counter()
+                result = func(*args, **kwargs)
+                end = time.perf_counter()
+                times.append(end - start)
+            
+            avg_time = sum(times) / repeat
+            print(f"[TIMER] {name or func.__name__}: {avg_time:.4f}s (avg over {repeat})")
+            return result
+        
+        return wrapper
+    return decorator
+
+def knn_brute(features, k):
+    nbrs = skn.NearestNeighbors(n_neighbors=k+1, algorithm='brute').fit(features)
+    dist, idx = nbrs.kneighbors(features)
+    return dist[:,1:], idx[:,1:]
+
+def knn_kd_tree(features, k):
+    tree = skn.NearestNeighbors(n_neighbors=k+1, algorithm='kd_tree').fit(features)
+    dist, idx = tree.kneighbors(features)
+    return dist[:,1:], idx[:,1:]
+
+def knn_flann(features, k):
+    features32 = features.astype(np.float32)
+    
+    index_params = dict(algorithm=1, trees=5)  # KDTree
+    search_params = dict(checks=50)
+    
+    flann = cv2.FlannBasedMatcher(index_params, search_params)
+    
+    matches = flann.knnMatch(features32, features32, k=k+1)
+    
+    distances = []
+    indices = []
+    
+    for m in matches:
+        distances.append([match.distance for match in m[1:]])
+        indices.append([match.trainIdx for match in m[1:]])
+    
+    return np.array(distances), np.array(indices)
 
 def knn_matting(image, trimap, task_id, knn_k, my_lambda=100):
     [h, w, c] = image.shape
@@ -18,7 +68,7 @@ def knn_matting(image, trimap, task_id, knn_k, my_lambda=100):
     # mask = foreground + background
     # cv2.imwrite(f'./result/{task_id}_mask.png', (mask * 255).astype(np.uint8))
     ####################################################
-    # TODO: find KNN for the given image
+    # find KNN for the given image
     ####################################################
     N = h * w
     x, y = np.meshgrid(np.arange(w), np.arange(h))
@@ -43,7 +93,7 @@ def knn_matting(image, trimap, task_id, knn_k, my_lambda=100):
     distances = distances[:, 1:]
     indices = indices[:, 1:]
     ####################################################
-    # TODO: compute the affinity matrix A
+    #       compute the affinity matrix A
     #       and all other stuff needed
     ####################################################
     sigma = np.mean(distances[:, -1])   # distance to k-th neighbor
@@ -80,7 +130,7 @@ def knn_matting(image, trimap, task_id, knn_k, my_lambda=100):
     b = my_lambda * constraint_values
     
     ####################################################
-    # TODO: solve for the linear system,
+    #       solve for the linear system,
     #       note that you may encounter en error
     #       if no exact solution exists
     ####################################################
@@ -90,11 +140,7 @@ def knn_matting(image, trimap, task_id, knn_k, my_lambda=100):
         alpha = spla.spsolve(M, b)
     except Warning as e:
         print("Error solving linear system:", e)
-        alpha, info = spla.cg(M, b, rtol=1e-5, maxiter=100)
-        if info != 0:
-            print("Conjugate Gradient did not converge:", info)
-            # try least squares solution
-            alpha = spla.lsqr(M, b)[0]
+        alpha, _ = spla.cg(M, b, rtol=1e-5, maxiter=100)
     
     alpha = np.clip(alpha, 0, 1).reshape(h, w)
     return alpha
@@ -104,11 +150,12 @@ if __name__ == '__main__':
     os.chdir(abs_path)
     os.makedirs('./result', exist_ok=True)
     new_background = cv2.imread(f'./background/garden.png')
-    tasks = ["bear", "white_cloth", "woman"]
+    # tasks = ["bear", "white_cloth", "woman"]
+    tasks = ["white_cloth"]
     for task_id in range(len(tasks)):
         print(f"Processing task: {tasks[task_id]}...")
         image = cv2.imread(f'./image/{tasks[task_id]}.png')
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        lab_image = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         trimap = cv2.imread(f'./trimap/{tasks[task_id]}.png', cv2.IMREAD_GRAYSCALE)
         # thresholds = [0, 32, 233, 255]
         trimap[trimap < 32] = 0
@@ -126,12 +173,18 @@ if __name__ == '__main__':
         #       and merge it with the foreground
         ####################################################
         # K = [3, 4, 5, 6, 7, 8, 9, 10]
-        K = [3, 5, 7, 10]
+        K = [20]
         for k in K:
             task_id_str = f"{tasks[task_id]}_k_{k}"
-            alpha = knn_matting(image, trimap, task_id=task_id_str, knn_k=k, my_lambda=1000)
+            alpha = knn_matting(lab_image, trimap, task_id=task_id_str, knn_k=k, my_lambda=1000)
             alpha = alpha[:, :, np.newaxis]
             alpha = (alpha * 255).astype(np.uint8)
             print(f"Saving matting result for K={k}...")
             cv2.imwrite(f'./result/{task_id_str}.png', alpha)
-            print(f"Finished saving result for K={k}")
+            print(f"Saving foreground for K={k}...")
+            foreground_composite = (alpha / 255.0) * image
+            cv2.imwrite(f'./result/{task_id_str}_foreground.png', foreground_composite)
+            print(f"Saving composing result for K={k}")
+            # composed = (alpha / 255.0) * image + (1 - alpha / 255.0) * new_background
+            # composed = cv2.cvtColor(composed.astype(np.uint8), cv2.COLOR_LAB2BGR)
+            # cv2.imwrite(f'./result/{task_id_str}_composed.png', composed)
