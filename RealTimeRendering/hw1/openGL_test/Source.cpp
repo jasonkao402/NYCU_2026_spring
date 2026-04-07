@@ -114,7 +114,9 @@ int main() {
 			.setUniform("colors", vec3(1.0f));
 
 		// TODO: Setup necessary informations for teapot program
-		teapotProgram.enable();
+		teapotProgram.enable()
+			.bindUniformBlock("MVP", mvp_point)
+			.setUniform("currentTime", 0.0f);
 	};
 	loadShader();
 
@@ -158,6 +160,17 @@ int main() {
 			
 			// TODO: render Teapot with Quaternion Transform
 			teapotProgram.enable();
+
+			// Pass light position, view position, and object color to the fragment shader
+			teapotProgram.setUniform("lightPos", vec3(3.0f, 5.0f, 4.0f)); // Example light position
+			teapotProgram.setUniform("viewPos", camera.position); // Camera position as view position
+			teapotProgram.setUniform("currentTime", (float)glfwGetTime()); // Rotate over time
+			teapotProgram.setUniform("orbitRadius", guiInput.orbitRadius);
+			teapotProgram.setUniform("orbitSpeed", guiInput.orbitSpeed);
+			teapotProgram.setUniform("spinSpeed", guiInput.spinSpeed);
+			teapotProgram.setUniform("lightPos", vec3(guiInput.lightPos[0], guiInput.lightPos[1], guiInput.lightPos[2]));
+			teapotProgram.setUniform("shininess", guiInput.shininess);
+			teapotProgram.setUniform("specularStrength", guiInput.specularStrength);
 
 			teapot.Draw(teapotProgram);
 		}

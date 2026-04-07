@@ -85,7 +85,7 @@ class TeapotModel
 public:
 	TeapotModel(const std::string& objPath) {
 		// TODO: load obj file and create buffers
-		std::vector<float> vertices;
+		std::vector<glm::vec3> positions;
 		std::vector<unsigned int> indices;
 		std::ifstream objFile(objPath);
 		if (!objFile.is_open()) {
@@ -100,9 +100,10 @@ public:
 			if (prefix == "v") {
 				float x, y, z;
 				iss >> x >> y >> z;
-				vertices.emplace_back(x);
-				vertices.emplace_back(y);
-				vertices.emplace_back(z);
+				positions.emplace_back(x, y, z);
+				// vertices.emplace_back(x);
+				// vertices.emplace_back(y);
+				// vertices.emplace_back(z);
 			} else if (prefix == "f") {
 				unsigned int v1, v2, v3;
 				// char slash; // to ignore the '/' character
@@ -113,7 +114,48 @@ public:
 			}
 		}
 		objFile.close();
+		// ---------- Compute per-vertex normals ----------
+		std::vector<glm::vec3> normals(positions.size(), glm::vec3(0.0f));
 
+		// For each triangle, compute face normal and add to each vertex
+		for (size_t i = 0; i < indices.size(); i += 3) {
+			unsigned int i1 = indices[i];
+			unsigned int i2 = indices[i+1];
+			unsigned int i3 = indices[i+2];
+
+			const glm::vec3& v1 = positions[i1];
+			const glm::vec3& v2 = positions[i2];
+			const glm::vec3& v3 = positions[i3];
+
+			// Compute face normal (cross product of two edges)
+			glm::vec3 edge1 = v2 - v1;
+			glm::vec3 edge2 = v3 - v1;
+			glm::vec3 faceNormal = glm::normalize(glm::cross(edge1, edge2));
+
+			// Accumulate face normal to each vertex of the triangle
+			normals[i1] += faceNormal;
+			normals[i2] += faceNormal;
+			normals[i3] += faceNormal;
+		}
+
+		// Normalize accumulated normals
+		for (auto& n : normals) {
+			if (glm::length(n) > 0.0f)
+				n = glm::normalize(n);
+			else
+				n = glm::vec3(0.0f, 1.0f, 0.0f); // fallback
+		}
+
+		// ---------- Build interleaved vertex buffer (position + normal) ----------
+		std::vector<float> vertexData;
+		for (size_t i = 0; i < positions.size(); ++i) {
+			vertexData.push_back(positions[i].x);
+			vertexData.push_back(positions[i].y);
+			vertexData.push_back(positions[i].z);
+			vertexData.push_back(normals[i].x);
+			vertexData.push_back(normals[i].y);
+			vertexData.push_back(normals[i].z);
+		}
 		// Generate and bind VAO
 		glGenVertexArrays(1, &VAO);
 		glBindVertexArray(VAO);
@@ -122,7 +164,7 @@ public:
 		GLuint VBO;
 		glGenBuffers(1, &VBO);
 		glBindBuffer(GL_ARRAY_BUFFER, VBO);
-		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), vertexData.data(), GL_STATIC_DRAW);
 
 		// Generate and bind EBO
 		GLuint EBO;
@@ -130,9 +172,13 @@ public:
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-		// Set vertex attribute pointers
+		// Position attribute (offset 0, stride 6 floats)
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+		// Normal attribute (offset 3 floats, stride 6 floats)
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+		glEnableVertexAttribArray(1);
 
 		// Unbind VAO
 		glBindVertexArray(0);

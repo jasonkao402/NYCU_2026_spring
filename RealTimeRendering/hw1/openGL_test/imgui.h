@@ -9,6 +9,13 @@ using namespace glm;
 
 struct guiDatas {
 	float fps = 30.0;
+	float orbitRadius = 2.5f;
+	float orbitSpeed = 80.0f;
+	float spinSpeed = 240.0f;
+
+	float lightPos[3] = { 3.0f, 5.0f, 4.0f };
+	float shininess = 10.0f;
+	float specularStrength = 0.5f;
 	bool reloadBtn = false;
 };
 
@@ -19,9 +26,16 @@ inline void imguiRender(guiDatas& values) {
 	ImGuiIO& io = ImGui::GetIO();
 	values.reloadBtn = false;
 	{
-		ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+		ImGui::Begin("313552011 Hello, world!");                          // Create a window called "Hello, world!" and append into it.
 		
 		ImGui::SliderFloat("fps", &values.fps, 3.0f, 120.0f);
+		ImGui::SliderFloat("orbit radius", &values.orbitRadius, 0.0f, 5.0f);
+		ImGui::SliderFloat("orbit speed", &values.orbitSpeed, 0.0f, 360.0f);
+		ImGui::SliderFloat("spin speed", &values.spinSpeed, 0.0f, 360.0f);
+		ImGui::Separator();
+		ImGui::SliderFloat3("Light Position", values.lightPos, -5.0f, 5.0f, "%.2f");
+		ImGui::SliderFloat("Shininess", &values.shininess, 0.0f, 128.0f, "%.2f");
+		ImGui::SliderFloat("Specular Strength", &values.specularStrength, 0.0f, 1.0f, "%.2f");
 
 		if (ImGui::Button("Reload shader")) {
 			values.reloadBtn = true;
