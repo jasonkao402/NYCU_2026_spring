@@ -140,7 +140,7 @@ def knn_matting(image, trimap, task_id, knn_k, my_lambda=100):
         alpha = spla.spsolve(M, b)
     except Warning as e:
         print("Error solving linear system:", e)
-        alpha, _ = spla.cg(M, b, rtol=1e-5, maxiter=100)
+        alpha, _ = spla.cg(M, b, rtol=1e-5, maxiter=1000)
     
     alpha = np.clip(alpha, 0, 1).reshape(h, w)
     return alpha
@@ -150,8 +150,9 @@ if __name__ == '__main__':
     os.chdir(abs_path)
     os.makedirs('./result', exist_ok=True)
     new_background = cv2.imread(f'./background/garden.png')
-    # tasks = ["bear", "white_cloth", "woman"]
-    tasks = ["white_cloth"]
+    # new_background = cv2.imread(f'./background/windowsXP.png')
+    tasks = ["bear", "white_cloth", "woman"]
+    # tasks = ["white_cloth"]
     for task_id in range(len(tasks)):
         print(f"Processing task: {tasks[task_id]}...")
         image = cv2.imread(f'./image/{tasks[task_id]}.png')
@@ -185,6 +186,16 @@ if __name__ == '__main__':
             foreground_composite = (alpha / 255.0) * image
             cv2.imwrite(f'./result/{task_id_str}_foreground.png', foreground_composite)
             print(f"Saving composing result for K={k}")
-            # composed = (alpha / 255.0) * image + (1 - alpha / 255.0) * new_background
-            # composed = cv2.cvtColor(composed.astype(np.uint8), cv2.COLOR_LAB2BGR)
-            # cv2.imwrite(f'./result/{task_id_str}_composed.png', composed)
+            # compose, place foreground on new background, on center
+            new_h, new_w = new_background.shape[:2]
+            fg_h, fg_w = image.shape[:2]
+            x_offset = (new_w - fg_w) // 2
+            y_offset = (new_h - fg_h) // 2
+            composed_image = new_background.copy()
+            for c in range(3):
+                composed_image[y_offset:y_offset+fg_h, x_offset:x_offset+fg_w, c] = (
+                    alpha[:, :, 0] / 255.0 * image[:, :, c] + 
+                    (1 - alpha[:, :, 0] / 255.0) * new_background[y_offset:y_offset+fg_h, x_offset:x_offset+fg_w, c]
+                ).astype(np.uint8)
+            cv2.imwrite(f'./result/{task_id_str}_composite.jpg', composed_image, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            

@@ -103,17 +103,41 @@ public:
 				vertices.emplace_back(x);
 				vertices.emplace_back(y);
 				vertices.emplace_back(z);
-			}
-			else if (prefix == "f") {
+			} else if (prefix == "f") {
 				unsigned int v1, v2, v3;
-				char slash; // to ignore the '/' character
-				iss >> v1 >> slash >> slash >> v2 >> slash >> slash >> v3;
+				// char slash; // to ignore the '/' character
+				iss >> v1 >> v2 >> v3;
 				indices.emplace_back(v1 - 1); // OBJ indices are 1-based
 				indices.emplace_back(v2 - 1);
 				indices.emplace_back(v3 - 1);
 			}
 		}
 		objFile.close();
+
+		// Generate and bind VAO
+		glGenVertexArrays(1, &VAO);
+		glBindVertexArray(VAO);
+
+		// Generate and bind VBO
+		GLuint VBO;
+		glGenBuffers(1, &VBO);
+		glBindBuffer(GL_ARRAY_BUFFER, VBO);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+		// Generate and bind EBO
+		GLuint EBO;
+		glGenBuffers(1, &EBO);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+
+		// Set vertex attribute pointers
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+		// Unbind VAO
+		glBindVertexArray(0);
+
+		total_indices = static_cast<int>(indices.size());
 	}
 	~TeapotModel() {}
 
