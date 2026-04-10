@@ -1,0 +1,5 @@
+Work done by 313552011 高聖傑
+
+1. Open visual studio
+2. select "release" profile, run build/rebuild
+3. Run program

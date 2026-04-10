@@ -105,7 +105,7 @@ int main() {
 
 	// shader program
 	Program vertexProgram({ "vertex.vs.glsl", "vertex.fs.glsl"});
-	Program teapotProgram({ "quaternion.vs.glsl", "surface.fs.glsl" });
+	Program teapotProgram({ "quaternion.vs.glsl", "surface_cel.fs.glsl" });
 
 	// init or hot reload shader
 	auto loadShader = [&]() {

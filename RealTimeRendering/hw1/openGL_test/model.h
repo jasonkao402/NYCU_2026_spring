@@ -93,6 +93,7 @@ public:
 			return;
 		}
 		std::string line;
+		bool hasNormals = false;
 		while (std::getline(objFile, line)) {
 			std::istringstream iss(line);
 			std::string prefix;
@@ -112,12 +113,17 @@ public:
 				indices.emplace_back(v2 - 1);
 				indices.emplace_back(v3 - 1);
 			}
+			else if (prefix == "vn")
+			{
+				hasNormals = true;
+			}
+			
 		}
 		objFile.close();
 		// ---------- Compute per-vertex normals ----------
 		std::vector<glm::vec3> normals(positions.size(), glm::vec3(0.0f));
 
-		// For each triangle, compute face normal and add to each vertex
+		// For each triangle face, compute normal and add to each vertex
 		for (size_t i = 0; i < indices.size(); i += 3) {
 			unsigned int i1 = indices[i];
 			unsigned int i2 = indices[i+1];

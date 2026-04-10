@@ -3,3 +3,5 @@ hw*/.vs/*
 hw**/x64/*
 *.log
 *.tlog
+*.zip
+*.mp4
