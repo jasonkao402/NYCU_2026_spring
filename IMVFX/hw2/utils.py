@@ -4,6 +4,8 @@ import torch
 import cv2
 import einops
 import imageio
+import matplotlib.pyplot as plt
+
 """
 Provided with a DDPM model, a specified number of samples to generate, and a chosen device,
 this function returns a set of freshly generated samples while also saving the .gif of the reverse process
@@ -88,3 +90,55 @@ def generate_new_images(ddpm, n_samples=16, device=None, frames_per_gif=25, gif_
                     writer.append_data(frames[-1])
     return x
 
+def show_forward(ddpm, loader, device):
+    fig = plt.figure(figsize=(6, 1))
+
+    for batch in loader:
+
+        images = batch[0]
+        fig.add_subplot(161)
+        temp = np.transpose(images[0], (1, 2, 0))
+        plt.title('original')
+        plt.imshow((temp+1)/2, cmap='gray')
+        plt.axis('off')
+
+        tensor_image = ddpm(images[:1].to(device), [int(0.1 * ddpm.n_steps) - 1])
+        image = tensor_image.detach().cpu().numpy()
+        fig.add_subplot(162)
+        temp = np.transpose(image[0], (1, 2, 0))
+        plt.title('10%')
+        plt.imshow((temp+1)/2, cmap='gray')
+        plt.axis('off')
+
+        tensor_image = ddpm(images[:1].to(device), [int(0.25 * ddpm.n_steps) - 1])
+        image = tensor_image.detach().cpu().numpy()
+        fig.add_subplot(163)
+        temp = np.transpose(image[0], (1, 2, 0))
+        plt.title('25%')
+        plt.imshow((temp+1)/2, cmap='gray')
+        plt.axis('off')
+
+        tensor_image = ddpm(images[:1].to(device), [int(0.5 * ddpm.n_steps) - 1])
+        image = tensor_image.detach().cpu().numpy()
+        fig.add_subplot(164)
+        temp = np.transpose(image[0], (1, 2, 0))
+        plt.title('50%')
+        plt.imshow((temp+1)/2, cmap='gray')
+        plt.axis('off')
+
+        tensor_image = ddpm(images[:1].to(device), [int(0.75 * ddpm.n_steps) - 1])
+        image = tensor_image.detach().cpu().numpy()
+        fig.add_subplot(165)
+        temp = np.transpose(image[0], (1, 2, 0))
+        plt.title('75%')
+        plt.imshow((temp+1)/2, cmap='gray')
+        plt.axis('off')
+
+        tensor_image = ddpm(images[:1].to(device), [int(1 * ddpm.n_steps) - 1])
+        image = tensor_image.detach().cpu().numpy()
+        fig.add_subplot(166)
+        temp = np.transpose(image[0], (1, 2, 0))
+        plt.title('100%')
+        plt.imshow((temp+1)/2, cmap='gray')
+        plt.axis('off')
+        break

@@ -39,49 +39,6 @@ def same_seeds(seed):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-# Set random seed for reproducibility
-same_seeds(999)
-# Batch size during training
-batch_size = 128
-
-# Number of training epochs
-n_epochs = 50
-
-# Learning rate for optimizers
-lr = 1e-4
-
-# Number of the forward steps
-n_steps = 500
-
-# Initial beta
-start_beta = 2e-4
-
-# End beta
-end_beta = 0.02
-
-# Getting device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device}")
-
-loss_list = []
-
-# Dataloader
-dataset = ImageFolder(root=dataset_path, transform=Compose([
-    Resize((48, 48)),
-    ToTensor(),
-    Lambda(lambda x: (x - 0.5) * 2)]
-))
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-print(dataloader.dataset)
-
-# check normalization
-for batch in dataloader:
-    images = batch[0]
-    print("Min pixel value:", images.min().item())
-    print("Max pixel value:", images.max().item())
-    break
-# Correct, values in [-1, 1]
-
 def cosine_beta_schedule(timesteps, s=0.01):
     steps = timesteps + 1
     x = torch.linspace(0, timesteps, steps)
@@ -287,15 +244,6 @@ class DDPM_anime(nn.Module):
     def backward(self, x, t):
         return self.noise_predictor(x, t)
 
-# Build the DDPM
-ddpm_anime = DDPM_anime(n_steps=n_steps, start_beta=start_beta, end_beta=end_beta, device=device)
-# show_forward(ddpm_anime, dataloader, device)
-# Print the model
-# print(ddpm_anime)
-print(f"Number of parameters: {sum(p.numel() for p in ddpm_anime.parameters())}")
-print(f"Number of parameters in UNet: {sum(p.numel() for p in ddpm_anime.noise_predictor.parameters())}")
-print(torch.cuda.memory_summary(device=device, abbreviated=True))
-
 def send_notification(webhook_url, message="test321"):
     payload = {
         "content": message,
@@ -371,4 +319,20 @@ def trainer(ddpm, dataloader, n_epochs, optim, loss_function, device, model_stor
 
     send_notification(webhook_url, f"Training finished!\n"+log_string)
 
-trainer(ddpm_anime, dataloader, n_epochs=n_epochs, optim=AdamW(ddpm_anime.parameters(), lr, weight_decay=1e-4), loss_function=nn.MSELoss(), device=device, model_store_path=model_store_path)
+if __name__ == "__main__":
+    same_seeds(42)
+    batch_size = 128
+    lr = 1e-4
+    n_epochs = 20
+
+    transform = Compose([
+        Resize((48, 48)),
+        ToTensor(),
+        Lambda(lambda x: x * 2 - 1)  # Scale to [-1, 1]
+    ])
+
+    dataset = ImageFolder(root=dataset_path, transform=transform)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
+
+    ddpm_anime = DDPM_anime(n_steps=1000, start_beta=1e-4, end_beta=0.02, device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+    trainer(ddpm_anime, dataloader, n_epochs=n_epochs, optim=AdamW(ddpm_anime.parameters(), lr, weight_decay=1e-4), loss_function=nn.MSELoss(), device=ddpm_anime.device, model_store_path=model_store_path)
