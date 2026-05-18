@@ -45,6 +45,7 @@ struct MeshData {
 	std::vector<unsigned int> indices;
 	std::vector<glm::vec3> normals;
 	std::vector<float> vertexData;
+	int vertexCount = 0;
 };
 
 /* 
@@ -99,8 +100,8 @@ std::shared_ptr<MeshData> loadPlyFile(const char* path) {
 
 	// For each triangle face, compute normal and add to each vertex
 	size_t indexCount = data->indices.size();
-	size_t vertexCount = data->vertices.size();
-	data->normals.resize(vertexCount, glm::vec3(0.0f));
+	data->vertexCount = data->vertices.size();
+	data->normals.resize(data->vertexCount, glm::vec3(0.0f));
 	for (size_t i = 0; i < indexCount; i += 3) {
 		unsigned int i1 = data->indices[i];
 		unsigned int i2 = data->indices[i+1];
@@ -129,7 +130,7 @@ std::shared_ptr<MeshData> loadPlyFile(const char* path) {
 			n = glm::vec3(0.0f, 1.0f, 0.0f); // fallback
 	}
 
-	for (size_t i = 0; i < vertexCount; ++i) {
+	for (size_t i = 0; i < data->vertexCount; ++i) {
 		data->vertexData.emplace_back(data->vertices[i].x);
 		data->vertexData.emplace_back(data->vertices[i].y);
 		data->vertexData.emplace_back(data->vertices[i].z);
@@ -152,9 +153,10 @@ void Mesh::uploadMeshData(std::shared_ptr<MeshData> data) {
 	if (data == nullptr) {
 		return;
 	}
+
 	glGenVertexArrays(1, &this->VAO);
 	glBindVertexArray(this->VAO);
-
+	data->vertexCount = static_cast<int>(data->vertices.size());
 	// TODO #2: upload data to GPU
 	//		  : you can add other buffer object to Mesh member
 
@@ -295,11 +297,32 @@ int main() {
 			// TODO #2: prepare light source and render your model
 			//        : setup necessary "dynamic" informations for your program
 			surfaceProgram.enable();
-			surfaceProgram.setUniform("M", glm::mat4(1.0));
+			// 1. Matrix and View setup
+			surfaceProgram.setUniform("M", glm::mat4(1.0f));
+			surfaceProgram.setUniform("ViewPos", camera.position); // Pass camera position
+			
+			// 2. Material setup
+			surfaceProgram.setUniform("SurfaceColor", glm::vec3(0.7f, 0.7f, 0.7f));
+			surfaceProgram.setUniform("DiffuseWarm", 0.5f);
+			surfaceProgram.setUniform("DiffuseCool", 0.5f);
+			surfaceProgram.setUniform("LightColor", glm::vec3(1.0f, 1.0f, 1.0f)); // Pass light color
+			glm::vec3 lightPositions[3] = {
+				glm::vec3(10.0f, 10.0f, 10.0f),
+				glm::vec3(-10.0f, 10.0f, 10.0f),
+				glm::vec3(0.0f, 10.0f, -10.0f),
+			};
+			// surfaceProgram.setUniformArray("LightPositions", lightPositions, 3); // Pass light positions
+			// GLuint lightPosLocation = glGetUniformLocation(surfaceProgram.ID, "LightPositions");
+			// glUniform3fv(lightPosLocation, 3, &lightPositions[0][0]);
+			for (int i = 0; i < 3; ++i) {
+				std::string uniformName = "LightPositions[" + std::to_string(i) + "]";
+				surfaceProgram.setUniform(uniformName.c_str(), lightPositions[i]);
+			}
 			if (model) {
 				auto VAO = model->getVAO(); // async load
 				if (VAO > 0) {
 					glBindVertexArray(VAO);
+					// glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(model->vertexCount)); // render loaded model
 					glDrawArrays(GL_TRIANGLES, 0, 36); // render template cube
 					glBindVertexArray(0);
 				}

@@ -36,7 +36,8 @@ public:
 		}
 		return VAO;
 	}
-
+	int vertexCount = 0;
+	
 private:
 	void uploadMeshData(std::shared_ptr<MeshData> data);
 
@@ -47,6 +48,7 @@ private:
 	// TODO #2: add other buffer object to keep openGL buffer
 	GLuint VAO = 0;
 	GLuint VBO = 0;
+	
 	int total_indices = 0;
 };
 
@@ -62,13 +64,13 @@ public:
 
 		
 		glGenBuffers(1, &VBO);
-		// The following commands will talk about our 'vertexbuffer' buffer
+		// The following commands will talk about our 'vertex buffer' buffer
 		glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
 		float maxLen = float(n_line) / 2.0f * interval;
 		float offset = -maxLen;
 		int eachLineSize = 3 * 2; // each lines has 2 vertex which has 3 float
-		std::unique_ptr<float[]> data = std::make_unique<float[]>(total_line * eachLineSize); // x and z axis each n_line 
+		std::unique_ptr<float[]> data = std::make_unique<float[]>(total_line * static_cast<size_t>(eachLineSize)); // x and z axis each n_line 
 		for (int i = 0; i < n_line; i++) {
 			float* t = data.get() + i * eachLineSize;
 			t[0] = offset;
@@ -100,7 +102,7 @@ public:
 	}
 	~Grid() {};
 	
-	inline void Draw(Program& program) {
+	inline void Draw(Program& program) const {
 		program.setUniform("M", glm::mat4(1.0));
 		glBindVertexArray(this->VAO);
 		glDrawArrays(GL_LINES, 0, 2 * this->total_line);
