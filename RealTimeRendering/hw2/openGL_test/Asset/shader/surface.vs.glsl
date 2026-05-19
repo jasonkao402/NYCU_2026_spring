@@ -18,4 +18,5 @@ void main() {
 	WorldPos = worldPos4.xyz;
 	WorldNormal = mat3(transpose(inverse(M))) * vertexNormal_modelspace; // Transform normal
 	gl_Position = P * V * worldPos4;
+	// gl_Position = vec4(WorldPos * 10, 1.0);
 }

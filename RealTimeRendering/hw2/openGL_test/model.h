@@ -36,7 +36,7 @@ public:
 		}
 		return VAO;
 	}
-	int vertexCount = 0;
+	int indexCount = 0;
 	
 private:
 	void uploadMeshData(std::shared_ptr<MeshData> data);
@@ -48,8 +48,7 @@ private:
 	// TODO #2: add other buffer object to keep openGL buffer
 	GLuint VAO = 0;
 	GLuint VBO = 0;
-	
-	int total_indices = 0;
+	GLuint EBO = 0;
 };
 
 

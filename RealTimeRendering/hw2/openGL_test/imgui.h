@@ -10,6 +10,8 @@ using namespace glm;
 struct guiDatas {
 	float fps = 30.0;
 	bool reloadBtn = false;
+	bool toggleWireframe = false;
+	float lightPos[3] = { 3.0f, 5.0f, 4.0f };
 };
 
 inline void imguiRender(guiDatas& values) {
@@ -20,8 +22,11 @@ inline void imguiRender(guiDatas& values) {
 	values.reloadBtn = false;
 	{
 		ImGui::Begin("313552011 Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-		
+		ImGui::SliderFloat3("Light Position", values.lightPos, -10.0f, 10.0f);
 		ImGui::SliderFloat("fps", &values.fps, 3.0f, 120.0f);
+		ImGui::Checkbox("Toggle wireframe", &values.toggleWireframe);
+		
+		// Checkbox state is already updated, so we can directly use values.toggleWireframe
 
 		if (ImGui::Button("Recompile shader")) {
 			values.reloadBtn = true;

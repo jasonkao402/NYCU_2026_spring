@@ -40,12 +40,12 @@ struct MeshData {
 	// TODO #2: add other member to store data read from ply file (e.g. normal, faces ...)
 	MeshData() {}
 	std::vector<glm::vec3> vertices;
-	
-	// std::vector<glm::vec3> positions;
-	std::vector<unsigned int> indices;
-	std::vector<glm::vec3> normals;
-	std::vector<float> vertexData;
-	int vertexCount = 0;
+    std::vector<unsigned int> indices;
+    std::vector<glm::vec3> normals;
+    std::vector<float> vertexData;
+    
+    int vertexCount = 0;
+    int indexCount = 0;
 };
 
 /* 
@@ -73,36 +73,68 @@ std::shared_ptr<MeshData> loadPlyFile(const char* path) {
 		return nullptr;
 	}
 	std::string line;
-	bool headerEnded = false;
-	while (std::getline(plyFile, line)) {
-		if (!headerEnded) {
-			if (line == "end_header") {
-				headerEnded = true;
-			}
-			continue; // skip header lines
-		}
-		std::istringstream iss(line);
-		std::string prefix;
-		iss >> prefix;
-		if (prefix == "3") { // face line (assuming triangular faces)
-			unsigned int v1, v2, v3;
-			iss >> v1 >> v2 >> v3;
-			data->indices.emplace_back(v1);
-			data->indices.emplace_back(v2);
-			data->indices.emplace_back(v3);
-		} else { // vertex line
-			float x, y, z;
-			iss >> x >> y >> z;
-			data->vertices.emplace_back(x, y, z);
-		}
-	}
+	int expectedVertices = 0;
+    int expectedFaces = 0;
+
+    // 1. Parse the Header safely
+    while (std::getline(plyFile, line)) {
+        if (line.find("element vertex") != std::string::npos) {
+            sscanf_s(line.c_str(), "element vertex %d", &expectedVertices);
+        } else if (line.find("element face") != std::string::npos) {
+            sscanf_s(line.c_str(), "element face %d", &expectedFaces);
+        } else if (line == "end_header") {
+            break; // Header is done
+        }
+    }
+	// Initialize Bounding Box tracking
+    glm::vec3 minBounds(FLT_MAX);
+    glm::vec3 maxBounds(-FLT_MAX);
+
+    // 2. Read exactly `expectedVertices` lines
+    for (int i = 0; i < expectedVertices; ++i) {
+        std::getline(plyFile, line);
+        std::istringstream iss(line);
+        float x, y, z;
+        iss >> x >> y >> z;
+        
+        glm::vec3 pos(x, y, z);
+        data->vertices.push_back(pos);
+
+        // Track min/max for auto-scaling
+        minBounds = glm::min(minBounds, pos);
+        maxBounds = glm::max(maxBounds, pos);
+    }
+
+    // 3. Read exactly `expectedFaces` lines (0-based)
+    for (int i = 0; i < expectedFaces; ++i) {
+        std::getline(plyFile, line);
+        std::istringstream iss(line);
+        int vertexCountInFace;
+        unsigned int v1, v2, v3;
+        
+        // PLY faces look like: "3 2 37 0" (Count, index1, index2, index3)
+        iss >> vertexCountInFace >> v1 >> v2 >> v3; 
+        
+        data->indices.push_back(v1);
+        data->indices.push_back(v2);
+        data->indices.push_back(v3);
+    }
+    plyFile.close();
+
+    // 4. Print out the Bounding Box to debug!
+    glm::vec3 center = (minBounds + maxBounds) / 2.0f;
+    glm::vec3 size = maxBounds - minBounds;
+    float maxDim = std::max({size.x, size.y, size.z});
+
+    std::cout << "Model Center: " << center.x << ", " << center.y << ", " << center.z << "\n";
+    std::cout << "Model Max Dimension: " << maxDim << "\n";
 	plyFile.close();
 
 	// For each triangle face, compute normal and add to each vertex
-	size_t indexCount = data->indices.size();
-	data->vertexCount = data->vertices.size();
-	data->normals.resize(data->vertexCount, glm::vec3(0.0f));
-	for (size_t i = 0; i < indexCount; i += 3) {
+	size_t _indexCount = data->indices.size();
+	size_t _vertexCount = data->vertices.size();
+	data->normals.resize(_vertexCount, glm::vec3(0.0f)); // Initialize normals to zero
+	for (size_t i = 0; i < _indexCount; i += 3) {
 		unsigned int i1 = data->indices[i];
 		unsigned int i2 = data->indices[i+1];
 		unsigned int i3 = data->indices[i+2];
@@ -129,8 +161,8 @@ std::shared_ptr<MeshData> loadPlyFile(const char* path) {
 		else
 			n = glm::vec3(0.0f, 1.0f, 0.0f); // fallback
 	}
-
-	for (size_t i = 0; i < data->vertexCount; ++i) {
+	
+	for (size_t i = 0; i < _vertexCount; ++i) {
 		data->vertexData.emplace_back(data->vertices[i].x);
 		data->vertexData.emplace_back(data->vertices[i].y);
 		data->vertexData.emplace_back(data->vertices[i].z);
@@ -138,10 +170,14 @@ std::shared_ptr<MeshData> loadPlyFile(const char* path) {
 		data->vertexData.emplace_back(data->normals[i].y);
 		data->vertexData.emplace_back(data->normals[i].z);
 	}
+	
+	data->indexCount = static_cast<int>(data->indices.size());
+	data->vertexCount = static_cast<int>(data->vertices.size());
+
 	// Completion time
 	auto end = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<double> duration = (end - start);
-	std::cout << buildMode() << " Loading mesh " << path << " with " << data->vertices.size() << " vertices takes " << duration.count() << " s\n";
+	std::cout << buildMode() << " Loading mesh " << path << " with " << data->vertices.size() << " vertices and " << data->indices.size() << " indices, takes " << duration.count() << " s\n";
 	return data;
 }
 
@@ -156,17 +192,17 @@ void Mesh::uploadMeshData(std::shared_ptr<MeshData> data) {
 
 	glGenVertexArrays(1, &this->VAO);
 	glBindVertexArray(this->VAO);
-	data->vertexCount = static_cast<int>(data->vertices.size());
 	// TODO #2: upload data to GPU
 	//		  : you can add other buffer object to Mesh member
 
 	glGenBuffers(1, &this->VBO);
 	glBindBuffer(GL_ARRAY_BUFFER, this->VBO);
-
 	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * data->vertexData.size(), data->vertexData.data(), GL_STATIC_DRAW);
 
-	
-	// glBindBuffer(GL_ARRAY_BUFFER, this->VBO);
+	glGenBuffers(1, &this->EBO); // Ensure EBO is declared in your Mesh class!
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * data->indices.size(), data->indices.data(), GL_STATIC_DRAW);
+
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);
 
@@ -211,13 +247,14 @@ int main() {
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
 	glEnable(GL_CULL_FACE);
+	// glDisable(GL_CULL_FACE);
 
 	// GUI init
 	guiDatas guiInput;
 	imguiInit(window);
 
 	// Camera and Mouse
-	Camera camera(window, width, height, { 0, 8, 30.0f }, 
+	Camera camera(window, width, height, { 0, 8, 0.0f }, 
 		{ std::make_shared<CameraAction::mouseControlBoth>(),std::make_shared<CameraAction::WASDControlMove>() });
 
 	Mouse& mouse = Mouse::get();
@@ -260,7 +297,11 @@ int main() {
 	double currentTime = 0;
 	double lastTime = 0;
 	double deltaTime = 0.0;
-
+	glm::vec3 lightPositions[3] = {
+		glm::vec3(10.0f, 10.0f, 10.0f),
+		glm::vec3(-10.0f, 10.0f, -10.0f),
+		glm::vec3(0.0f, 10.0f, 0.0f)
+	};
 	while (!glfwWindowShouldClose(window)) {
 		// fps control
 		currentTime = glfwGetTime();
@@ -306,14 +347,8 @@ int main() {
 			surfaceProgram.setUniform("DiffuseWarm", 0.5f);
 			surfaceProgram.setUniform("DiffuseCool", 0.5f);
 			surfaceProgram.setUniform("LightColor", glm::vec3(1.0f, 1.0f, 1.0f)); // Pass light color
-			glm::vec3 lightPositions[3] = {
-				glm::vec3(10.0f, 10.0f, 10.0f),
-				glm::vec3(-10.0f, 10.0f, 10.0f),
-				glm::vec3(0.0f, 10.0f, -10.0f),
-			};
-			// surfaceProgram.setUniformArray("LightPositions", lightPositions, 3); // Pass light positions
-			// GLuint lightPosLocation = glGetUniformLocation(surfaceProgram.ID, "LightPositions");
-			// glUniform3fv(lightPosLocation, 3, &lightPositions[0][0]);
+			
+			lightPositions[2] = glm::vec3(guiInput.lightPos[0], guiInput.lightPos[1], guiInput.lightPos[2]); // Dynamic light position from GUI
 			for (int i = 0; i < 3; ++i) {
 				std::string uniformName = "LightPositions[" + std::to_string(i) + "]";
 				surfaceProgram.setUniform(uniformName.c_str(), lightPositions[i]);
@@ -322,8 +357,9 @@ int main() {
 				auto VAO = model->getVAO(); // async load
 				if (VAO > 0) {
 					glBindVertexArray(VAO);
-					// glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(model->vertexCount)); // render loaded model
-					glDrawArrays(GL_TRIANGLES, 0, 36); // render template cube
+					glDrawElements(GL_TRIANGLES, model->indexCount, GL_UNSIGNED_INT, (void*)0); // Use index count for indexed drawing
+					// glDrawArrays(GL_TRIANGLES, 0, 36); // render template cube
+					// glDrawArrays(GL_POINTS, 0, model->indexCount); // render points for debugging
 					glBindVertexArray(0);
 				}
 			}
@@ -341,11 +377,19 @@ int main() {
 			asset.getFiles(asset.root());
 			resetProgram();
 		}
+		// toggle wireframe
+		if (guiInput.toggleWireframe) {
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		}
+		else {
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		}
 
 		// close window if ESC pressed
 		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 			glfwSetWindowShouldClose(window, true);
 		}
+		// std::cout << camera.position.x << ", " << camera.position.y << ", " << camera.position.z << "\n";
 	}
 
 	glfwDestroyWindow(window);

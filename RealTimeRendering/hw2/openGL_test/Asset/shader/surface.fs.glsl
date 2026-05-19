@@ -51,5 +51,6 @@ void main() {
     // finalColor = finalColor / 3.0;
 
     // FragColor = vec4(finalColor, 1.0);
-    FragColor = N * 0.5 + 0.5; // Visualize normals for debugging
+    // FragColor = vec4(N * 0.5 + 0.5, 1.0); // Visualize normals for debugging
+    FragColor = vec4(1.0, 0.0, 0.0, 1.0); // Temporary: Output pure red for testing
 }
