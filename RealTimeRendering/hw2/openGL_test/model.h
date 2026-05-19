@@ -36,7 +36,7 @@ public:
 		}
 		return VAO;
 	}
-	int indexCount = 0;
+	int MeshIndexCount = 0;
 	
 private:
 	void uploadMeshData(std::shared_ptr<MeshData> data);

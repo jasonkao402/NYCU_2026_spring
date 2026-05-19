@@ -44,8 +44,8 @@ struct MeshData {
     std::vector<glm::vec3> normals;
     std::vector<float> vertexData;
     
-    int vertexCount = 0;
-    int indexCount = 0;
+    int MeshDataVertexCount = 0;
+    int MeshDataIndexCount = 0;
 };
 
 /* 
@@ -171,8 +171,8 @@ std::shared_ptr<MeshData> loadPlyFile(const char* path) {
 		data->vertexData.emplace_back(data->normals[i].z);
 	}
 	
-	data->indexCount = static_cast<int>(data->indices.size());
-	data->vertexCount = static_cast<int>(data->vertices.size());
+	data->MeshDataIndexCount = static_cast<int>(data->indices.size());
+	data->MeshDataVertexCount = static_cast<int>(data->vertices.size());
 
 	// Completion time
 	auto end = std::chrono::high_resolution_clock::now();
@@ -270,8 +270,9 @@ int main() {
 	Asset::AssetController asset;
 
 	// TODO #2: Load mesh
-	std::shared_ptr<Mesh> model = asset.getMesh("dragon.ply");
-
+	// std::shared_ptr<Mesh> model = asset.getMesh("dragon.ply");
+	std::shared_ptr<Mesh> model = asset.getMesh("octahedron.ply");
+	// std::shared_ptr<Mesh> testcube = asset
 	// objects
 	Grid grid(30, 5);
 
@@ -357,9 +358,9 @@ int main() {
 				auto VAO = model->getVAO(); // async load
 				if (VAO > 0) {
 					glBindVertexArray(VAO);
-					glDrawElements(GL_TRIANGLES, model->indexCount, GL_UNSIGNED_INT, (void*)0); // Use index count for indexed drawing
+					glDrawElements(GL_TRIANGLES, model->MeshIndexCount, GL_UNSIGNED_INT, (void*)0); // Use index count for indexed drawing
 					// glDrawArrays(GL_TRIANGLES, 0, 36); // render template cube
-					// glDrawArrays(GL_POINTS, 0, model->indexCount); // render points for debugging
+					// glDrawArrays(GL_POINTS, 0, model->MeshIndexCount); // render points for debugging
 					glBindVertexArray(0);
 				}
 			}

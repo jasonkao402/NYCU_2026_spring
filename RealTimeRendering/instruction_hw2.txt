@@ -1,0 +1,9 @@
+Work done by 313552011 高聖傑
+
+1. Open visual studio
+2. select "release" profile, run build/rebuild
+3. Run program
+
+No keyboard, all interactions can be done on GUI.
+(Note that I made the surface normal continous, or able to blend with gooch shading, 0 is gooch shading, 1 is surface normal rainbow)
+Takes around 1 or 2 second to load the dragon mesh in release mode.

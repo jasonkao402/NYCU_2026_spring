@@ -14,6 +14,14 @@
 
 #include "texture.h"
 
+static std::string buildMode() {
+#ifdef _DEBUG
+	return "[! Debug mode]";
+#else
+	return "[Release mode]";
+#endif
+}
+
 class Grid
 {
 public:
@@ -92,6 +100,7 @@ public:
 			std::cerr << "Failed to open file: " << objPath << std::endl;
 			return;
 		}
+		auto start = std::chrono::high_resolution_clock::now();
 		std::string line;
 		bool hasNormals = false;
 		while (std::getline(objFile, line)) {
@@ -190,6 +199,10 @@ public:
 		glBindVertexArray(0);
 
 		total_indices = static_cast<int>(indices.size());
+		auto end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> duration = (end - start);
+		std::cout << buildMode() << " Loaded mesh " << " with " << vertexData.size() << " vertices and " << indices.size() << " indices, takes " << duration.count() << " s\n";
+	
 	}
 	~TeapotModel() {}
 

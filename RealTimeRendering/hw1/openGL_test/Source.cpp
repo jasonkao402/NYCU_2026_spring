@@ -26,7 +26,6 @@ extern "C" {
 }
 #endif
 
-
 int main() {
 	std::vector<glm::vec3> controlPoints = {
 		{- 5.f,  10.f,   0.f},
@@ -56,7 +55,7 @@ int main() {
 
 	const int width = 1024, height = 768;
 
-	GLFWwindow* window = glfwCreateWindow(width, height, "Exercise #1", NULL, NULL);
+	GLFWwindow* window = glfwCreateWindow(width, height, "Exercise #2", NULL, NULL);
 	if (window == NULL) {
 		std::cout << "error";
 		glfwTerminate();
@@ -101,11 +100,11 @@ int main() {
 
 	// objects
 	Grid grid(30, 5);
-	TeapotModel teapot("Asset/Teapot.obj");
+	TeapotModel teapot("Asset/dragon.obj");
 
 	// shader program
 	Program vertexProgram({ "vertex.vs.glsl", "vertex.fs.glsl"});
-	Program teapotProgram({ "quaternion.vs.glsl", "surface_cel.fs.glsl" });
+	Program teapotProgram({ "quaternion.vs.glsl", "surface_gooch.fs.glsl" });
 
 	// init or hot reload shader
 	auto loadShader = [&]() {
@@ -124,7 +123,11 @@ int main() {
 	double currentTime = 0;
 	double lastTime = 0;
 	double deltaTime = 0.0;
-
+	glm::vec3 lightPositions[3] = {
+		glm::vec3(20.0f, 5.0f, 20.0f),
+		glm::vec3(-20.0f, 5.0f, -20.0f),
+		glm::vec3(0.0f, 0.0f, 0.0f)
+	};
 	while (!glfwWindowShouldClose(window)) {
 		// fps control
 		currentTime = glfwGetTime();
@@ -162,16 +165,23 @@ int main() {
 			teapotProgram.enable();
 
 			// Pass light position, view position, and object color to the fragment shader
-			teapotProgram.setUniform("lightPos", vec3(3.0f, 5.0f, 4.0f)); // Example light position
+			// teapotProgram.setUniform("lightPos", vec3(3.0f, 5.0f, 4.0f)); // Example light position
 			teapotProgram.setUniform("viewPos", camera.position); // Camera position as view position
 			teapotProgram.setUniform("currentTime", (float)glfwGetTime()); // Rotate over time
 			teapotProgram.setUniform("orbitRadius", guiInput.orbitRadius);
 			teapotProgram.setUniform("orbitSpeed", guiInput.orbitSpeed);
 			teapotProgram.setUniform("spinSpeed", guiInput.spinSpeed);
-			teapotProgram.setUniform("lightPos", vec3(guiInput.lightPos[0], guiInput.lightPos[1], guiInput.lightPos[2]));
-			teapotProgram.setUniform("shininess", guiInput.shininess);
-			teapotProgram.setUniform("specularStrength", guiInput.specularStrength);
-
+			// teapotProgram.setUniform("lightPos", vec3(guiInput.lightPos[0], guiInput.lightPos[1], guiInput.lightPos[2]));
+			// teapotProgram.setUniform("shininess", guiInput.shininess);
+			// teapotProgram.setUniform("specularStrength", guiInput.specularStrength);
+			lightPositions[2] = glm::vec3(guiInput.lightPos[0], guiInput.lightPos[1], guiInput.lightPos[2]); // Dynamic light position from GUI
+			for (int i = 0; i < 3; ++i) {
+				std::string uniformName = "LightPos[" + std::to_string(i) + "]";
+				teapotProgram.setUniform(uniformName.c_str(), lightPositions[i]);
+			}
+			// toggle normal visualization / gooch shading
+			// teapotProgram.setUniform("showNormals", guiInput.showNormals);
+			teapotProgram.setUniform("showNormals", guiInput.showNormals);
 			teapot.Draw(teapotProgram);
 		}
 
@@ -186,7 +196,7 @@ int main() {
 			asset.getFiles(asset.root());
 			loadShader();
 		}
-
+		
 		// close window if ESC pressed
 		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 			glfwSetWindowShouldClose(window, true);
