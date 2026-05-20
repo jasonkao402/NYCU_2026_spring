@@ -100,11 +100,12 @@ int main() {
 
 	// objects
 	Grid grid(30, 5);
-	TeapotModel teapot("Asset/dragon.obj");
+	CustomModel dragon("Asset/dragon.ply");
+	CustomModel lightIndicator("Asset/octahedron.ply");
 
 	// shader program
 	Program vertexProgram({ "vertex.vs.glsl", "vertex.fs.glsl"});
-	Program teapotProgram({ "quaternion.vs.glsl", "surface_gooch.fs.glsl" });
+	Program surfaceProgram({ "quaternion.vs.glsl", "surface_gooch.fs.glsl" });
 
 	// init or hot reload shader
 	auto loadShader = [&]() {
@@ -112,8 +113,8 @@ int main() {
 			.bindUniformBlock("MVP", mvp_point)
 			.setUniform("colors", vec3(1.0f));
 
-		// TODO: Setup necessary informations for teapot program
-		teapotProgram.enable()
+		// TODO: Setup necessary informations for dragon program
+		surfaceProgram.enable()
 			.bindUniformBlock("MVP", mvp_point)
 			.setUniform("currentTime", 0.0f);
 	};
@@ -159,30 +160,34 @@ int main() {
 			vertexProgram.enable();
 			{
 				grid.Draw(vertexProgram);
+				
+				for (int i = 0; i < 3; ++i) {
+					glm::mat4 model = glm::translate(glm::mat4(1.0f), lightPositions[i]) * glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
+					lightIndicator.Draw(vertexProgram, model);
+				}
 			}
 			
-			// TODO: render Teapot with Quaternion Transform
-			teapotProgram.enable();
-
+			surfaceProgram.enable();
 			// Pass light position, view position, and object color to the fragment shader
-			// teapotProgram.setUniform("lightPos", vec3(3.0f, 5.0f, 4.0f)); // Example light position
-			teapotProgram.setUniform("viewPos", camera.position); // Camera position as view position
-			teapotProgram.setUniform("currentTime", (float)glfwGetTime()); // Rotate over time
-			teapotProgram.setUniform("orbitRadius", guiInput.orbitRadius);
-			teapotProgram.setUniform("orbitSpeed", guiInput.orbitSpeed);
-			teapotProgram.setUniform("spinSpeed", guiInput.spinSpeed);
-			// teapotProgram.setUniform("lightPos", vec3(guiInput.lightPos[0], guiInput.lightPos[1], guiInput.lightPos[2]));
-			// teapotProgram.setUniform("shininess", guiInput.shininess);
-			// teapotProgram.setUniform("specularStrength", guiInput.specularStrength);
+			// surfaceProgram.setUniform("lightPos", vec3(3.0f, 5.0f, 4.0f)); // Example light position
+			surfaceProgram.setUniform("viewPos", camera.position); // Camera position as view position
+			surfaceProgram.setUniform("currentTime", (float)glfwGetTime()); // Rotate over time
+			surfaceProgram.setUniform("orbitRadius", guiInput.orbitRadius);
+			surfaceProgram.setUniform("orbitSpeed", guiInput.orbitSpeed);
+			surfaceProgram.setUniform("spinSpeed", guiInput.spinSpeed);
+			// surfaceProgram.setUniform("lightPos", vec3(guiInput.lightPos[0], guiInput.lightPos[1], guiInput.lightPos[2]));
+			// surfaceProgram.setUniform("shininess", guiInput.shininess);
+			// surfaceProgram.setUniform("specularStrength", guiInput.specularStrength);
 			lightPositions[2] = glm::vec3(guiInput.lightPos[0], guiInput.lightPos[1], guiInput.lightPos[2]); // Dynamic light position from GUI
 			for (int i = 0; i < 3; ++i) {
 				std::string uniformName = "LightPos[" + std::to_string(i) + "]";
-				teapotProgram.setUniform(uniformName.c_str(), lightPositions[i]);
+				surfaceProgram.setUniform(uniformName.c_str(), lightPositions[i]);
 			}
 			// toggle normal visualization / gooch shading
-			// teapotProgram.setUniform("showNormals", guiInput.showNormals);
-			teapotProgram.setUniform("showNormals", guiInput.showNormals);
-			teapot.Draw(teapotProgram);
+			// surfaceProgram.setUniform("showNormals", guiInput.showNormals);
+			surfaceProgram.setUniform("showNormals", guiInput.showNormals);
+			dragon.Draw(surfaceProgram);
+			
 		}
 
 		// render gui
