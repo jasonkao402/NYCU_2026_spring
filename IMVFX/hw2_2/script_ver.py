@@ -56,11 +56,11 @@ from tqdm import tqdm
 # Training
 img_size = 64
 batch_size = 256
-num_workers = 2
+num_workers = 8
 n_epochs_vae = 10
 n_epochs_ldm = 15
 lr_vae = 1e-4
-lr_ldm = 2e-4
+lr_ldm = 1e-4
 
 # VAE
 latent_channels = 4
@@ -285,10 +285,23 @@ class ResBlock(nn.Module):
         return h + self.skip(x)
 
 # %%
+class AttentionBlock(nn.Module):
+    def __init__(self, ch: int, num_heads: int = 4):
+        super().__init__()
+        self.norm = nn.GroupNorm(8 if ch % 8 == 0 else 1, ch)
+        self.attn = nn.MultiheadAttention(ch, num_heads, batch_first=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, c, h, w = x.shape
+        h_ = self.norm(x).view(b, c, h * w).transpose(1, 2)  # (b, hw, c)
+        attn_out, _ = self.attn(h_, h_, h_)
+        attn_out = attn_out.transpose(1, 2).view(b, c, h, w)
+        return x + attn_out
+    
 class UNetLatent(nn.Module):
     """
     Tiny U-Net for latent maps with optional class conditioning.
-    Multi-scale (2 downs), concat skips, 2 ResBlocks per level.
+    Multi-scale (3 downs), concat skips, 2 ResBlocks per level.
     """
 
     def __init__(
@@ -340,6 +353,7 @@ class UNetLatent(nn.Module):
 
         # ----- Middle -----
         self.mid1 = ResBlock(curr_ch, curr_ch, time_dim)
+        # self.mid_attn = AttentionBlock(curr_ch)
         self.mid2 = ResBlock(curr_ch, curr_ch, time_dim)
 
         # ----- Decoder -----
@@ -396,6 +410,7 @@ class UNetLatent(nn.Module):
 
         # Middle
         h = self._maybe_ckpt(self.mid1, h, t_emb)
+        # h = self._maybe_ckpt(self.mid_attn, h)
         h = self._maybe_ckpt(self.mid2, h, t_emb)
 
         # Decoder: upsample + concat skip + blocks
@@ -436,8 +451,23 @@ class DiffusionCore(nn.Module):
         super().__init__()
         self.n_steps = n_steps
 
-        # ---- noise schedule ----
+        # ---- noise schedule: linear----
         betas = torch.linspace(start_beta, end_beta, n_steps)
+        
+        # ---- noise schedule: cosine ----
+        # x = torch.arange(n_steps + 1, dtype=torch.float32)
+        
+        # # 1. Calculate the target cumulative alpha (signal decay curve)
+        # s = 0.008
+        # alphas_cumprod = torch.cos(((x / n_steps) + s) / (1 + s) * math.pi * 0.5) ** 2
+        # alphas_cumprod = alphas_cumprod / alphas_cumprod[0]  # normalize to start at 1.0
+        
+        # # 2. Derive raw betas from the cumprod
+        # betas = 1.0 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+        
+        # # 3. THE CUTOFF: Clip beta to prevent math explosions
+        # betas = torch.clip(betas, min=start_beta, max=0.9999)
+        
         alphas = 1.0 - betas
         abar = torch.cumprod(alphas, dim=0)
 
@@ -517,6 +547,43 @@ class DiffusionCore(nn.Module):
                 z = mean
 
         return self.vae.decode(z)
+    
+    # DDIM sampling
+    @torch.no_grad()
+    def ddim_sample(self, batch_size, y, num_steps = 50, eta=0.0):
+        z = torch.randn(
+            batch_size,
+            *self.latent_shape,
+            device=self.betas.device
+        )
+        steps = np.linspace(self.n_steps - 1, 0, num_steps, dtype=int)
+        # pre-compute alpha_bar for the selected steps
+        abar = self.abar[steps]                    # shape [num_steps]
+        abar_next = torch.cat([abar[1:], torch.tensor([1.0]).to(abar)])
+        
+        for i, t in enumerate(steps):
+            t_batch = torch.full((batch_size,), t, device=z.device)
+            eps = self.unet(z, t_batch, y)
+
+            alpha_bar_t = abar[i]
+            alpha_bar_prev = abar_next[i]
+            
+            # predict x0
+            x0_pred = (z - torch.sqrt(1 - alpha_bar_t) * eps) / torch.sqrt(alpha_bar_t)
+
+            # compute mean for z_next
+            dir_xt = torch.sqrt(1 - alpha_bar_prev) * eps
+            mean = torch.sqrt(alpha_bar_prev) * x0_pred + dir_xt
+
+            if i < num_steps - 1:
+                sigma = eta * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar_t) * (1 - alpha_bar_t / alpha_bar_prev))
+                noise = torch.randn_like(z)
+                z = mean + sigma * noise
+            else:
+                z = mean
+        
+        return self.vae.decode(z)
+        
 
 # %% [markdown]
 # # Train
@@ -716,7 +783,10 @@ core.eval()
 with torch.no_grad():
     y = torch.arange(25, device=device) % num_classes
     gen_images = core.sample(batch_size=25, y=y).cpu()
-show_images(gen_images, labels=y.cpu(), title="Generated MNIST (5x5)")
+    
+    ddim_gen_images = core.ddim_sample(batch_size=25, y=y, num_steps=40, eta=0.05).cpu()
+show_images(gen_images, labels=y.cpu(), title="DDPM Generated MNIST (5x5)")
+show_images(ddim_gen_images, labels=y.cpu(), title="DDIM Generated MNIST (5x5)")
 
 # %% [markdown]
 # ### Show transition: noise -> image
@@ -778,9 +848,9 @@ show_images(transition_strip, title="Transition (sample 0): noise -> image")
 celeba_img_size = 64
 celeba_batch_size = 128
 celeba_n_epochs_vae = 10
-celeba_n_epochs_ldm = 15
+celeba_n_epochs_ldm = 12
 celeba_lr_vae = 1e-4
-celeba_lr_ldm = 2e-4
+celeba_lr_ldm = 1e-4
 celeba_num_classes = 2
 
 # %%
@@ -812,7 +882,6 @@ class CelebASmilingDataset(torch.utils.data.Dataset):
         smiling = attrs[self.smiling_idx].long()
         return image, smiling
 
-# %%
 celeba_transform = Compose([
     Resize((celeba_img_size, celeba_img_size)),
     ToTensor(),
@@ -833,11 +902,11 @@ print(celeba_loader.dataset.base)
 
 # %%
 images, labels = next(iter(celeba_loader))
-
+lookup = {0: "Not smiling", 1: "Smiling"}
 print(f"image size: {images[0].size()}")
 show_images(
     images[:25],
-    ["Not smiling" if x == 0 else "Smiling" for x in labels[:25]],
+    [lookup[x.cpu().item()] for x in labels[:25]],
     "Samples of CelebA"
 )
 
@@ -889,33 +958,11 @@ show_images(generated.cpu(), smile_labels, "Generated CelebA Images")
 # %%
 ldm_losses_celeba = train_ldm(celeba_core, celeba_loader, n_epochs=celeba_n_epochs_ldm, lr=celeba_lr_ldm)
 
-# %%
-torch.save(core.unet.state_dict(), unet_store_path)
-torch.save(core.state_dict(), core_store_path)
-
-# %% [markdown]
-# # Plot loss values
-# 
-
-# %% [markdown]
-# CelebA loss curves
-# 
 
 # %%
 ######################################################################################
 # TODO: Plot the loss values of VAE and LDM for the CelebA dataset
 ######################################################################################
-plt.figure(figsize=(10, 5))
-plt.plot(vae_losses_celeba, label="VAE Loss")
-plt.xlabel("Iteration")
-plt.ylabel("Loss")
-plt.title("VAE Training Loss on CelebA")
-# plot final loss value as text
-plt.text(len(vae_losses_celeba)-1, vae_losses_celeba[-1], f"{vae_losses_celeba[-1]:.4f}", fontsize=12, verticalalignment='bottom', horizontalalignment='right')
-plt.grid()
-plt.legend()
-plt.show()
-
 plt.figure(figsize=(10, 5))
 plt.plot(ldm_losses_celeba, label="LDM Loss")
 plt.xlabel("Iteration")
@@ -924,6 +971,29 @@ plt.title("LDM Training Loss on CelebA")
 plt.grid()
 plt.legend()
 plt.show()
+
+# %%
+torch.save(celeba_core.unet.state_dict(), celeba_unet_store_path)
+torch.save(celeba_core.state_dict(), celeba_core_store_path)
+
+# %% [markdown]
+# # Plot loss values
+# 
+
+# %%
+celeba_core = DiffusionCore(
+    n_steps=T,
+    start_beta=beta_start,
+    end_beta=beta_end,
+    image_shape=(3, celeba_img_size, celeba_img_size),
+    latent_channels=latent_channels,
+    unet_base_ch=unet_base_ch,
+    num_classes=celeba_num_classes,
+).to(device)
+celeba_core.vae.load_state_dict(torch.load(celeba_vae_store_path, map_location=device))
+celeba_core.unet.load_state_dict(torch.load(celeba_unet_store_path, map_location=device))
+celeba_core.load_state_dict(torch.load(celeba_core_store_path, map_location=device))
+celeba_core.eval()
 
 # %% [markdown]
 # # Plot generated images in 5*5 grid
@@ -938,9 +1008,20 @@ plt.show()
 ######################################################################################
 # TODO: Store your generate images in 5*5 grid for the CelebA dataset
 ######################################################################################
+with torch.no_grad():
+    y = torch.arange(25, device=device) % celeba_num_classes
+    gen_images = celeba_core.sample(batch_size=25, y=y).cpu()
+    ddim_gen_images = celeba_core.ddim_sample(batch_size=25, y=y, num_steps=50, eta=0.00).cpu()
+show_images(gen_images, labels=[lookup[int(x)] for x in y.cpu()], title="DDPM Generated CelebA (5x5)")
+show_images(ddim_gen_images, labels=[lookup[int(x)] for x in y.cpu()], title="DDIM Generated CelebA (5x5)")
 
 # %%
 # The transition of CelebA. With VAE, the transition is not from pure noises.
+with torch.no_grad():
+    y16 = torch.arange(16, device=device) % celeba_num_classes
+    hist = sample_with_history(celeba_core, batch_size=16, y=y16, n_frames=16)
+transition_strip = torch.stack([frame[0] for frame in hist], dim=0)
+show_images(transition_strip, title="Transition (sample 0): noise -> image")
 
 # %% [markdown]
 # # FID for CelebA Smiling
@@ -992,7 +1073,8 @@ def _sample_celeba_condition(
         device=next(core.parameters()).device,
         dtype=torch.long,
     )
-    return core.sample(batch_size=n_samples, y=y)
+    # return core.sample(batch_size=n_samples, y=y)
+    return core.ddim_sample(batch_size=n_samples, y=y, num_steps=50, eta=0.00)
 
 
 def _compute_smiling_fid_for_label(
@@ -1123,7 +1205,24 @@ except ImportError:
 # |1|Smiling|1 Smiling|69\.23033142089844|5000|5000|11506767|
 # |2|Smiling|Overall weighted|72\.3712043762207|10000|10000|11506767|
 
-# %%
-
+# %% [markdown]
+# DDPM
+# 
+# Attribute	Condition	FID	Real Samples	Fake Samples	Model Weight (params)
+# 
+# 0	Smiling	0 Not smiling	75.880180	5000	5000	11506767
+# 1	Smiling	1 Smiling	70.414047	5000	5000	11506767
+# 2	Smiling	Overall weighted	73.147114	10000	10000	11506767
+# 
+# ---
+# DDIM
+# 
+# Attribute	Condition	FID	Real Samples	Fake Samples	Model Weight (params)
+# 
+# 0	Smiling	0 Not smiling	90.399765	5000	5000	11506767
+# 1	Smiling	1 Smiling	79.602982	5000	5000	11506767
+# 2	Smiling	Overall weighted	85.001373	10000	10000	11506767
+# 
+# 
 
 
