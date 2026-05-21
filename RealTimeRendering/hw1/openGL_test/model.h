@@ -88,134 +88,236 @@ private:
 #include <fstream>
 #include <sstream>
 
-class TeapotModel
+class CustomModel
 {
 public:
-	TeapotModel(const std::string& objPath) {
-		// TODO: load obj file and create buffers
-		std::vector<glm::vec3> positions;
-		std::vector<unsigned int> indices;
-		std::ifstream objFile(objPath);
-		if (!objFile.is_open()) {
-			std::cerr << "Failed to open file: " << objPath << std::endl;
-			return;
-		}
-		auto start = std::chrono::high_resolution_clock::now();
-		std::string line;
-		bool hasNormals = false;
-		while (std::getline(objFile, line)) {
-			std::istringstream iss(line);
-			std::string prefix;
-			iss >> prefix;
-			if (prefix == "v") {
-				float x, y, z;
-				iss >> x >> y >> z;
-				positions.emplace_back(x, y, z);
-				// vertices.emplace_back(x);
-				// vertices.emplace_back(y);
-				// vertices.emplace_back(z);
-			} else if (prefix == "f") {
-				unsigned int v1, v2, v3;
-				// char slash; // to ignore the '/' character
-				iss >> v1 >> v2 >> v3;
-				indices.emplace_back(v1 - 1); // OBJ indices are 1-based
-				indices.emplace_back(v2 - 1);
-				indices.emplace_back(v3 - 1);
-			}
-			else if (prefix == "vn")
-			{
-				hasNormals = true;
-			}
-			
-		}
-		objFile.close();
-		// ---------- Compute per-vertex normals ----------
-		std::vector<glm::vec3> normals(positions.size(), glm::vec3(0.0f));
+    CustomModel(const std::string& filePath) {
+        // Determine file type by extension
+        std::string ext;
+        size_t dot = filePath.find_last_of('.');
+        if (dot != std::string::npos)
+            ext = filePath.substr(dot);
 
-		// For each triangle face, compute normal and add to each vertex
-		for (size_t i = 0; i < indices.size(); i += 3) {
-			unsigned int i1 = indices[i];
-			unsigned int i2 = indices[i+1];
-			unsigned int i3 = indices[i+2];
+        if (ext == ".ply")
+            loadPLY(filePath);
+        else
+            loadOBJ(filePath);   // original OBJ loader
+    }
 
-			const glm::vec3& v1 = positions[i1];
-			const glm::vec3& v2 = positions[i2];
-			const glm::vec3& v3 = positions[i3];
+    ~CustomModel() {}
 
-			// Compute face normal (cross product of two edges)
-			glm::vec3 edge1 = v2 - v1;
-			glm::vec3 edge2 = v3 - v1;
-			glm::vec3 faceNormal = glm::normalize(glm::cross(edge1, edge2));
-
-			// Accumulate face normal to each vertex of the triangle
-			normals[i1] += faceNormal;
-			normals[i2] += faceNormal;
-			normals[i3] += faceNormal;
-		}
-
-		// Normalize accumulated normals
-		for (auto& n : normals) {
-			if (glm::length(n) > 0.0f)
-				n = glm::normalize(n);
-			else
-				n = glm::vec3(0.0f, 1.0f, 0.0f); // fallback
-		}
-
-		// ---------- Build interleaved vertex buffer (position + normal) ----------
-		std::vector<float> vertexData;
-		for (size_t i = 0; i < positions.size(); ++i) {
-			vertexData.push_back(positions[i].x);
-			vertexData.push_back(positions[i].y);
-			vertexData.push_back(positions[i].z);
-			vertexData.push_back(normals[i].x);
-			vertexData.push_back(normals[i].y);
-			vertexData.push_back(normals[i].z);
-		}
-		// Generate and bind VAO
-		glGenVertexArrays(1, &VAO);
-		glBindVertexArray(VAO);
-
-		// Generate and bind VBO
-		GLuint VBO;
-		glGenBuffers(1, &VBO);
-		glBindBuffer(GL_ARRAY_BUFFER, VBO);
-		glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), vertexData.data(), GL_STATIC_DRAW);
-
-		// Generate and bind EBO
-		GLuint EBO;
-		glGenBuffers(1, &EBO);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
-
-		// Position attribute (offset 0, stride 6 floats)
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-
-		// Normal attribute (offset 3 floats, stride 6 floats)
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
-
-		// Unbind VAO
-		glBindVertexArray(0);
-
-		total_indices = static_cast<int>(indices.size());
-		auto end = std::chrono::high_resolution_clock::now();
-		std::chrono::duration<double> duration = (end - start);
-		std::cout << buildMode() << " Loaded mesh " << " with " << vertexData.size() << " vertices and " << indices.size() << " indices, takes " << duration.count() << " s\n";
-	
-	}
-	~TeapotModel() {}
-
-	inline void Draw(Program& program) {
-		program.setUniform("M", glm::mat4(1.0));
-		glBindVertexArray(this->VAO);
-		glDrawElements(GL_TRIANGLES, total_indices, GL_UNSIGNED_INT, 0);
-
-		// unbind buffer
-		glBindVertexArray(0);
-	}
+    inline void Draw(Program& program, glm::mat4 M = glm::mat4(1.0)) {
+        program.setUniform("M", M);
+        glBindVertexArray(this->VAO);
+        glDrawElements(GL_TRIANGLES, total_indices, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
 
 private:
-	int total_indices;
-	GLuint VAO;
+    int total_indices = 0;
+    GLuint VAO = 0;
+
+    // ---------- OBJ loader (original code) ----------
+    void loadOBJ(const std::string& objPath) {
+        std::vector<glm::vec3> positions;
+        std::vector<unsigned int> indices;
+        std::ifstream objFile(objPath);
+        if (!objFile.is_open()) {
+            std::cerr << "Failed to open file: " << objPath << std::endl;
+            return;
+        }
+        auto start = std::chrono::high_resolution_clock::now();
+        std::string line;
+        bool hasNormals = false;
+        while (std::getline(objFile, line)) {
+            std::istringstream iss(line);
+            std::string prefix;
+            iss >> prefix;
+            if (prefix == "v") {
+                float x, y, z;
+                iss >> x >> y >> z;
+                positions.emplace_back(x, y, z);
+            } else if (prefix == "f") {
+                unsigned int v1, v2, v3;
+                iss >> v1 >> v2 >> v3;
+                indices.emplace_back(v1 - 1); // OBJ is 1‑based
+                indices.emplace_back(v2 - 1);
+                indices.emplace_back(v3 - 1);
+            } else if (prefix == "vn") {
+                hasNormals = true;
+            }
+        }
+        objFile.close();
+        buildBuffers(positions, indices);
+    }
+
+    // ---------- PLY loader (new) ----------
+    void loadPLY(const std::string& plyPath) {
+        std::ifstream plyFile(plyPath);
+        if (!plyFile.is_open()) {
+            std::cerr << "Failed to open file: " << plyPath << std::endl;
+            return;
+        }
+        auto start = std::chrono::high_resolution_clock::now();
+
+        // -- Parse header --
+        std::string line;
+        std::getline(plyFile, line);
+        if (line != "ply") {
+            std::cerr << "Not a valid PLY file (missing 'ply')." << std::endl;
+            return;
+        }
+
+        size_t vertexCount = 0, faceCount = 0;
+        while (std::getline(plyFile, line)) {
+            // Trim leading whitespace
+            size_t first = line.find_first_not_of(" \t");
+            if (first == std::string::npos) continue;
+            line = line.substr(first);
+            if (line.rfind("comment", 0) == 0) continue;
+
+            std::istringstream iss(line);
+            std::string keyword;
+            iss >> keyword;
+            if (keyword == "format") {
+                std::string fmt;
+                iss >> fmt;
+                if (fmt != "ascii") {
+                    std::cerr << "Only ASCII PLY is supported." << std::endl;
+                    return;
+                }
+            } else if (keyword == "element") {
+                std::string elem;
+                size_t count;
+                iss >> elem >> count;
+                if (elem == "vertex") vertexCount = count;
+                else if (elem == "face") faceCount = count;
+            } else if (keyword == "end_header") {
+                break;
+            }
+            // ignore 'property' lines
+        }
+
+        // -- Read vertices --
+        std::vector<glm::vec3> positions;
+        positions.reserve(vertexCount);
+        for (size_t i = 0; i < vertexCount; ++i) {
+            if (!std::getline(plyFile, line)) break;
+            std::istringstream iss(line);
+            float x, y, z;
+            if (!(iss >> x >> y >> z)) {
+                std::cerr << "Error reading vertex " << i << std::endl;
+                return;
+            }
+            positions.emplace_back(x, y, z);
+            // ignore any extra properties per vertex
+        }
+
+        // -- Read faces (and triangulate n‑gons) --
+        std::vector<unsigned int> indices;
+        indices.reserve(faceCount * 3); // guess for triangles
+        for (size_t i = 0; i < faceCount; ++i) {
+            if (!std::getline(plyFile, line)) break;
+            std::istringstream iss(line);
+            int count;
+            if (!(iss >> count)) {
+                std::cerr << "Error reading face " << i << std::endl;
+                return;
+            }
+            std::vector<unsigned int> faceVerts(count);
+            for (int j = 0; j < count; ++j) {
+                if (!(iss >> faceVerts[j])) {
+                    std::cerr << "Error reading face " << i << " vertex " << j << std::endl;
+                    return;
+                }
+                // PLY indices are 0‑based → keep as‑is
+            }
+
+            // Triangulate polygon as a fan (works for convex/quads etc.)
+            for (int j = 1; j < count - 1; ++j) {
+                indices.push_back(faceVerts[0]);
+                indices.push_back(faceVerts[j]);
+                indices.push_back(faceVerts[j + 1]);
+            }
+        }
+
+        plyFile.close();
+		auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration = end - start;
+        std::cout << buildMode() << " Loaded mesh with "
+                  << positions.size() << " vertices and "
+                  << indices.size() << " indices, took "
+                  << duration.count() << " s\n";
+        buildBuffers(positions, indices);
+    }
+
+    // ---------- Common buffer building ----------
+    void buildBuffers(const std::vector<glm::vec3>& positions,
+                      const std::vector<unsigned int>& indices) {
+        if (positions.empty() || indices.empty()) return;
+
+        // Compute per‑vertex normals
+        std::vector<glm::vec3> normals(positions.size(), glm::vec3(0.0f));
+        for (size_t i = 0; i < indices.size(); i += 3) {
+            unsigned int i1 = indices[i];
+            unsigned int i2 = indices[i+1];
+            unsigned int i3 = indices[i+2];
+
+            const glm::vec3& v1 = positions[i1];
+            const glm::vec3& v2 = positions[i2];
+            const glm::vec3& v3 = positions[i3];
+
+            glm::vec3 edge1 = v2 - v1;
+            glm::vec3 edge2 = v3 - v1;
+            glm::vec3 faceNormal = glm::normalize(glm::cross(edge1, edge2));
+
+            normals[i1] += faceNormal;
+            normals[i2] += faceNormal;
+            normals[i3] += faceNormal;
+        }
+        for (auto& n : normals) {
+            float len = glm::length(n);
+            if (len > 0.0f)
+                n /= len;
+            else
+                n = glm::vec3(0.0f, 1.0f, 0.0f); // fallback
+        }
+
+        // Interleaved vertex data (position + normal)
+        std::vector<float> vertexData;
+        vertexData.reserve(positions.size() * 6);
+        for (size_t i = 0; i < positions.size(); ++i) {
+            vertexData.push_back(positions[i].x);
+            vertexData.push_back(positions[i].y);
+            vertexData.push_back(positions[i].z);
+            vertexData.push_back(normals[i].x);
+            vertexData.push_back(normals[i].y);
+            vertexData.push_back(normals[i].z);
+        }
+
+        // OpenGL buffers
+        glGenVertexArrays(1, &VAO);
+        glBindVertexArray(VAO);
+
+        GLuint VBO, EBO;
+        glGenBuffers(1, &VBO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float),
+                     vertexData.data(), GL_STATIC_DRAW);
+
+        glGenBuffers(1, &EBO);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
+                     indices.data(), GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                              (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+
+        glBindVertexArray(0);
+
+        total_indices = static_cast<int>(indices.size());
+    }
 };
