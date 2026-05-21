@@ -1,0 +1,8 @@
+animefacedataset/*
+celeba_dataset/*
+mnist_dataset/*
+*.gif
+*.png
+*.pt
+*.pth
+*.zip
