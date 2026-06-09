@@ -183,6 +183,35 @@ private:
 	GLuint VAO;
 	GLuint VBO;
 };
+struct LightCubeData {
+    GLuint VAO = 0;
+    GLuint VBO = 0;
+    int vertexCount = 0;
+
+    void setupGL(const std::vector<glm::vec3>& vertices) {
+        vertexCount = static_cast<int>(vertices.size());
+        
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), vertices.data(), GL_STATIC_DRAW);
+
+        // Location 0: Positions
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+
+        glBindVertexArray(0);
+    }
+
+	inline void Draw(Program& program) {
+		program.enable();
+		glBindVertexArray(this->VAO);
+		glDrawArrays(GL_TRIANGLES, 0, this->vertexCount);
+		glBindVertexArray(0);
+	}
+};
 
 inline std::vector<glm::vec3> makeCube() {
 	return {

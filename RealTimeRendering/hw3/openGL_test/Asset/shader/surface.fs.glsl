@@ -15,7 +15,7 @@ uniform sampler2D normalMap;
 uniform sampler2D depthMap;
 
 // POM Settings
-uniform float heightScale; // Typically around 0.05 to 0.1
+uniform float depthFactor; // Typically around 0.05 to 0.1
 
 // Lighting Setup (Arbitrary Point Lights)
 struct PointLight {
@@ -26,10 +26,11 @@ struct PointLight {
     float quadratic;
 };
 
-#define MAX_POINT_LIGHTS 50
+#define MAX_POINT_LIGHTS 10
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
 uniform int numPointLights;
 uniform vec3 viewPos; // World space view position
+uniform int renderMode;
 
 // --- PARALLAX OCCLUSION MAPPING FUNCTION ---
 vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir) { 
@@ -41,7 +42,7 @@ vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir) {
     // Calculate layer depth and texture coordinate shift per layer
     float layerDepth = 1.0 / numLayers;
     float currentLayerDepth = 0.0;
-    vec2 P = viewDir.xy / viewDir.z * heightScale; 
+    vec2 P = viewDir.xy / viewDir.z * depthFactor; 
     vec2 deltaTexCoords = P / numLayers;
   
     // Initial variables
@@ -73,15 +74,31 @@ void main() {
     // 2. Perform Parallax Occlusion Mapping
     vec2 texCoords = ParallaxMapping(fs_in.TexCoords, tangentViewDir);
     
-    // Optional: Discard fragments at the edges to prevent texture bleeding
+    // Discard fragments at the edges to prevent texture bleeding
     if(texCoords.x > 1.0 || texCoords.y > 1.0 || texCoords.x < 0.0 || texCoords.y < 0.0)
         discard;
 
+	// --- DEPTH MODE (2) ---
+    if (renderMode == 2) {
+        // Sample the depth map at the parallax-shifted UVs
+        float depthValue = texture(depthMap, texCoords).r;
+        // Output as grayscale
+        FragColor = vec4(vec3(depthValue), 1.0);
+        return; 
+    }
+
+    // --- NORMAL MODE (1) ---
+    vec3 tangentNormal = texture(normalMap, texCoords).rgb;
+    
+    if (renderMode == 1) {
+        FragColor = vec4(tangentNormal, 1.0);
+        return;
+    }
+	// --- LIT MODE (0) ---
     // 3. Sample Textures using the new POM TexCoords
     vec3 albedo = texture(diffuseMap, texCoords).rgb;
     
     // 4. Normal Mapping -> Convert Tangent Normal to World Space Normal
-    vec3 tangentNormal = texture(normalMap, texCoords).rgb;
     tangentNormal = tangentNormal * 2.0 - 1.0; // Map from [0,1] to [-1,1]
     vec3 worldNormal = normalize(fs_in.TBN * tangentNormal);
     

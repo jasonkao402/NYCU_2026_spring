@@ -96,7 +96,9 @@ int main() {
 	Grid grid(30, 5);
 
 	// TODO #3: Load cube as light source
-	std::vector<glm::vec3> lightVertices = makeCube();
+	// std::vector<glm::vec3> lightVertices = makeCube();
+	LightCubeData lightCubeData;
+	lightCubeData.setupGL(makeCube());
 
 	// shader programs
 	Program vertexProgram(asset.getShaders({ "vertex.vs.glsl", "vertex.fs.glsl" }));
@@ -115,7 +117,7 @@ int main() {
 			.setUniform("diffuseMap", 0)  // Matches GL_TEXTURE0
             .setUniform("normalMap", 1)   // Matches GL_TEXTURE1
             .setUniform("depthMap", 2)    // Matches GL_TEXTURE2
-            .setUniform("heightScale", 0.1f); // Default POM scale, tweak as needed
+            .setUniform("depthFactor", 0.1f); // Default POM scale, tweak as needed
 	};
 	resetProgram();
 
@@ -155,6 +157,15 @@ int main() {
 			vertexProgram.enable();
 			{
 				grid.Draw(vertexProgram);
+				
+				glm::mat4 lightModel = glm::mat4(1.0f);
+                lightModel = glm::translate(lightModel, guiInput.lightPos);
+                lightModel = glm::scale(lightModel, glm::vec3(0.5f));
+
+				vertexProgram.setUniform("M", lightModel);
+                vertexProgram.setUniform("colors", glm::vec3(1.0f, 1.0f, 1.0f)); // Make the cube white
+                
+                lightCubeData.Draw(vertexProgram);
 			}
 
 			// TODO #3: prepare light source and render your model
@@ -162,14 +173,15 @@ int main() {
 			surfaceProgram.enable();
 			surfaceProgram.setUniform("M", glm::mat4(1.0));
 			surfaceProgram.setUniform("viewPos", camera.position);
+			surfaceProgram.setUniform("renderMode", guiInput.renderMode);
+			surfaceProgram.setUniform("depthFactor", guiInput.depthFactor);
 
-			glm::vec3 lightPos = glm::vec3(2.0f, 4.0f, 2.0f); // Could be tied to guiInput
             surfaceProgram.setUniform("numPointLights", 1);
-            surfaceProgram.setUniform("pointLights[0].position", lightPos);
+            surfaceProgram.setUniform("pointLights[0].position", guiInput.lightPos);
             surfaceProgram.setUniform("pointLights[0].color", glm::vec3(1.0f, 1.0f, 1.0f));
             surfaceProgram.setUniform("pointLights[0].constant", 1.0f);
-            surfaceProgram.setUniform("pointLights[0].linear", 0.09f);
-            surfaceProgram.setUniform("pointLights[0].quadratic", 0.032f);
+            surfaceProgram.setUniform("pointLights[0].linear", 0.045f);
+            surfaceProgram.setUniform("pointLights[0].quadratic", 0.0075f);
 
 			GLuint idDiffuse = asset.getTexture(guiInput.textureIndex == 0 ? "wood.png" : "bricks.png")->getId();
 			GLuint idNormal = asset.getTexture(guiInput.textureIndex == 0 ? "wood_normal.png" : "bricks_normal.png")->getId();
