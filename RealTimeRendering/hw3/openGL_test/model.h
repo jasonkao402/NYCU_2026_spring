@@ -20,29 +20,103 @@ struct SquareData {
 	std::vector<glm::vec3> normals;
 	std::vector<glm::vec2> texCoords;
 	std::vector<glm::vec3> tangents;
+	// Added OpenGL handles and properties
+    GLuint VAO = 0;
+    GLuint VBO = 0;
+    int vertexCount = 0;
+
+    // Generates buffers and uploads the vector data to the GPU
+    void setupGL() {
+        vertexCount = static_cast<int>(vertices.size());
+
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+        // 1. Calculate the total size required for all attributes
+        size_t posSize = vertices.size() * sizeof(glm::vec3);
+        size_t normSize = normals.size() * sizeof(glm::vec3);
+        size_t tcSize = texCoords.size() * sizeof(glm::vec2);
+        size_t tanSize = tangents.size() * sizeof(glm::vec3);
+        size_t totalSize = posSize + normSize + tcSize + tanSize;
+
+        // 2. Allocate an empty buffer of the total size
+        glBufferData(GL_ARRAY_BUFFER, totalSize, nullptr, GL_STATIC_DRAW);
+
+        // 3. Upload each vector into its respective chunk of the buffer
+        GLintptr offset = 0;
+        glBufferSubData(GL_ARRAY_BUFFER, offset, posSize, vertices.data());
+        offset += posSize;
+        
+        glBufferSubData(GL_ARRAY_BUFFER, offset, normSize, normals.data());
+        offset += normSize;
+        
+        glBufferSubData(GL_ARRAY_BUFFER, offset, tcSize, texCoords.data());
+        offset += tcSize;
+        
+        glBufferSubData(GL_ARRAY_BUFFER, offset, tanSize, tangents.data());
+
+        // 4. Tell OpenGL how to read the buffer chunks (Location 0 to 3)
+        offset = 0;
+        
+        // Location 0: Positions (aPos)
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)offset);
+        offset += posSize;
+
+        // Location 1: Normals (aNormal)
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)offset);
+        offset += normSize;
+
+        // Location 2: Texture Coords (aTexCoords)
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)offset);
+        offset += tcSize;
+
+        // Location 3: Tangents (aTangent)
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)offset);
+
+        // Unbind to prevent accidental modifications
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+	inline void Draw(Program& program) {
+		program.setUniform("M", glm::mat4(1.0));
+		glBindVertexArray(this->VAO);
+		glDrawArrays(GL_TRIANGLES, 0, this->vertexCount);
+		glBindVertexArray(0);
+	}
 };
 
 inline SquareData makeSquare() {
-	return {
-		{
-			{-10.0f, 0.0f, 0.0f},
-			{ 10.0f, 0.0f, 0.0f},
-			{ 10.0f, 20.0f, 0.0f},
-			{-10.0f, 0.0f, 0.0f},
-			{ 10.0f, 20.0f, 0.0f},
-			{-10.0f, 20.0f, 0.0f}
-		},
-		std::vector<glm::vec3>(6, {0.0f, 0.0f, 1.0f}),
-		{
-			{0.0f, 0.0f},
-			{1.0f, 0.0f},
-			{1.0f, 1.0f},
-			{0.0f, 0.0f},
-			{1.0f, 1.0f},
-			{0.0f, 1.0f}
-		},
-		std::vector<glm::vec3>(6, {1.0f, 0.0f, 0.0f})
-	};
+    SquareData sq;
+    sq.vertices = {
+        {-10.0f, 0.0f, 0.0f},
+        { 10.0f, 0.0f, 0.0f},
+        { 10.0f, 20.0f, 0.0f},
+        {-10.0f, 0.0f, 0.0f},
+        { 10.0f, 20.0f, 0.0f},
+        {-10.0f, 20.0f, 0.0f}
+    };
+    sq.normals = std::vector<glm::vec3>(6, {0.0f, 0.0f, 1.0f});
+    sq.texCoords = {
+        {0.0f, 0.0f},
+        {1.0f, 0.0f},
+        {1.0f, 1.0f},
+        {0.0f, 0.0f},
+        {1.0f, 1.0f},
+        {0.0f, 1.0f}
+    };
+    sq.tangents = std::vector<glm::vec3>(6, {1.0f, 0.0f, 0.0f});
+    
+    // Upload the data to OpenGL before returning
+    sq.setupGL(); 
+    return sq;
 }
 
 

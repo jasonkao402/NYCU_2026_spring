@@ -111,7 +111,11 @@ int main() {
 
 		// TODO #3: setup necessary "constant" informations for your program
 		surfaceProgram.enable()
-			.bindUniformBlock("MVP", mvp_point);
+			.bindUniformBlock("MVP", mvp_point)
+			.setUniform("diffuseMap", 0)  // Matches GL_TEXTURE0
+            .setUniform("normalMap", 1)   // Matches GL_TEXTURE1
+            .setUniform("depthMap", 2)    // Matches GL_TEXTURE2
+            .setUniform("heightScale", 0.1f); // Default POM scale, tweak as needed
 	};
 	resetProgram();
 
@@ -157,6 +161,15 @@ int main() {
 			//        : setup necessary "dynamic" informations for your program
 			surfaceProgram.enable();
 			surfaceProgram.setUniform("M", glm::mat4(1.0));
+			surfaceProgram.setUniform("viewPos", camera.position);
+
+			glm::vec3 lightPos = glm::vec3(2.0f, 4.0f, 2.0f); // Could be tied to guiInput
+            surfaceProgram.setUniform("numPointLights", 1);
+            surfaceProgram.setUniform("pointLights[0].position", lightPos);
+            surfaceProgram.setUniform("pointLights[0].color", glm::vec3(1.0f, 1.0f, 1.0f));
+            surfaceProgram.setUniform("pointLights[0].constant", 1.0f);
+            surfaceProgram.setUniform("pointLights[0].linear", 0.09f);
+            surfaceProgram.setUniform("pointLights[0].quadratic", 0.032f);
 
 			GLuint idDiffuse = asset.getTexture(guiInput.textureIndex == 0 ? "wood.png" : "bricks.png")->getId();
 			GLuint idNormal = asset.getTexture(guiInput.textureIndex == 0 ? "wood_normal.png" : "bricks_normal.png")->getId();
@@ -171,6 +184,10 @@ int main() {
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, idDepth);
 
+			 glBindVertexArray(quadData.VAO); 
+             glDrawArrays(GL_TRIANGLES, 0, quadData.vertexCount); // or glDrawElements if using an EBO
+			//quadData->Draw(surfaceProgram);
+            
 			glBindVertexArray(0);
 		}
 
