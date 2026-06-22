@@ -56,8 +56,8 @@ if __name__ == '__main__':
                 
                 # Clamp values to [0, 1] to ensure make_grid handles colors properly
                 saved = torch.clamp(saved, 0, 1)
-                filename = f"test_set/results/interp_img_{j:02d}.png"
-                utils.save_image(saved, filename)
+                # filename = f"test_set/results/interp_img_{j:02d}.png"
+                # utils.save_image(saved, filename)
                 # Append to our list of images
                 grid_images.append(saved)
 
