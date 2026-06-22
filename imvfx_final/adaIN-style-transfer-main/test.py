@@ -7,8 +7,11 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
 from ImageDataset import DeNormalize
+import os
 
 if __name__ == '__main__':
+    _dir_path = os.path.dirname(os.path.realpath(__file__))
+    os.chdir(_dir_path)
 
     model = StyleTransfer()
     model.decoder.load_state_dict(torch.load("models/best_model.pth", map_location='cpu'))
@@ -19,7 +22,7 @@ if __name__ == '__main__':
     #grab our test images
     #Content images in test_set/content
     #Style Images in test_set/style 
-    num_images = 3
+    num_images = 4
     content = ImageDataset(flag='content', root_dir='./test_set/content', data_range=(0,num_images))
     style = ImageDataset(flag='style', root_dir='./test_set/style', data_range=(0,num_images))
     content_img = DataLoader(dataset=content, batch_size=1, shuffle=False)
@@ -29,6 +32,7 @@ if __name__ == '__main__':
     #they have to be denormalized with the same stats before they are saved
     denormalizer = DeNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
+    print(len(content_img), len(style_img))
     i = 0
     for content_batch, style_batch in zip(content_img, style_img):
 
@@ -38,5 +42,7 @@ if __name__ == '__main__':
         saved = decoded.clone().detach()
         saved = denormalizer(saved)
 
-        utils.save_image(saved, "test_set/results/img" + str(i) + ".png")
+        filename = f"test_set/results/img_{i:02d}.png"
+        utils.save_image(saved, filename)
+        print(f"Saved {filename}")
         i+=1
