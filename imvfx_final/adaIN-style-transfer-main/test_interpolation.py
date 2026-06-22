@@ -33,13 +33,14 @@ if __name__ == '__main__':
     denormalizer = DeNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
     # Slider weight: 0.5 means a 50/50 mix of Style A and Style B
-    num_steps = 7
+    num_steps = 5
     alpha_weight = np.linspace(0, 1, num=num_steps) 
 
     i = 0
-    
-    for content_batch, style_batch_A, style_batch_B in zip(content_img, style_img_A, style_img_B):
-        _start = time.time()
+    style_batch_A = next(iter(style_img_A))
+    style_batch_B = next(iter(style_img_B))
+    for content_batch in content_img:
+        _start = time.time_ns()
         with torch.no_grad():
             # 1. Run the heavy extraction ONCE per image set
             model.cache_adain_features(content_batch, style_batch_A, style_batch_B)
@@ -64,13 +65,13 @@ if __name__ == '__main__':
         # 3. Concatenate all step images along the batch dimension (dim=0)
         # Resulting shape will be (num_steps, 3, H, W)
         grid_tensor = torch.cat(grid_images, dim=0)
-        _end = time.time()
-        print(f"Processed interpolation for image {i} in {_end - _start:.2f} seconds.")
+        _end = time.time_ns()
+        print(f"Processed interpolation for image {i} in {(_end - _start) / 1e9:.3f} seconds.")
         # 4. Stitch them into a single image grid side-by-side
         # nrow=num_steps means all steps will be in a single horizontal row
         grid = utils.make_grid(grid_tensor, nrow=num_steps, padding=2, normalize=False)
 
-        filename = f"test_set/results/grid_interp_{i:02d}.png"
+        filename = f"test_set/results/blend{num_steps}_{i:02d}.png"
         utils.save_image(grid, filename)
         print(f"Saved {filename} with {num_steps} interpolation steps.")
         i += 1
