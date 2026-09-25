@@ -16,7 +16,7 @@ import requests, time
 from utils import generate_new_images
 
 SEND_INTERVAL = 300
-webhook_url = "https://discord.com/api/webhooks/1351429559639212123/91nmrQ6FGn-K-_FXWPwrU4HtZhOUt90f3VmxhnREqXy3QQUfUEjZFrtrWJkaNUNZo_Fb"
+webhook_url = ""
 
 workspace_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(workspace_dir)
